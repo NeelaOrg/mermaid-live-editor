@@ -55,6 +55,12 @@ When building set the MERMAID_IS_ENABLED_MERMAID_CHART_LINKS build argument to `
 
 Default is empty, disabling button to save to Mermaid Chart and promotional banner.
 
+To keep Mermaid Chart links enabled but hide promotional banners, set
+MERMAID_IS_ENABLED_PROMOTIONS to `false`.
+
+To keep Mermaid Chart links enabled but hide Mermaid Chart Playground links, set
+MERMAID_IS_ENABLED_PLAYGROUND_LINKS to `false`.
+
 ### To update the Security modal
 
 The modal shown on clicking the security link assumes analytics, renderer, Kroki
@@ -68,6 +74,33 @@ docker compose up --build
 ```
 
 Then open http://localhost:3000
+
+### MCP (tools/list + tools/call)
+
+When running the dev server (`pnpm dev`), the app exposes a JSON-RPC MCP-compatible endpoint at
+`POST /api/mcp` (and `OPTIONS /api/mcp` for CORS). Use `tools/list` to discover tools and
+`tools/call` to execute them (e.g. render Mermaid to SVG).
+
+To avoid embedding large SVG strings in JSON, use the `mermaid.render_svg_store` tool. It returns an
+`id` and a relative `url` (served from `GET /api/rendered/:id`) that returns `image/svg+xml`.
+
+### AI Edit (Azure OpenAI)
+
+The left pane includes an "AI Edit" card that can apply natural-language changes to the current
+Mermaid code. It calls a SvelteKit endpoint (`POST /api/ai/mermaid-edit`) which uses Azure OpenAI
+Responses API.
+
+Set these environment variables (use `.env.local`, do not commit secrets):
+
+- `AZURE_OPENAI_ENDPOINT` (e.g. `https://YOUR-RESOURCE.openai.azure.com`)
+- `AZURE_OPENAI_API_KEY`
+- `AZURE_OPENAI_DEPLOYMENT`
+- `AZURE_OPENAI_API_VERSION` (optional, default `2024-10-01-preview`)
+
+Notes:
+- `AZURE_OPENAI_ENDPOINT` can be either the resource root (`https://YOUR-RESOURCE.openai.azure.com`) or the
+  OpenAI-compatible endpoint (`https://YOUR-RESOURCE.openai.azure.com/openai/v1`).
+- If you use the `/openai/v1` form, set `AZURE_OPENAI_MODEL` (or keep using `AZURE_OPENAI_DEPLOYMENT` as the model name).
 
 ### Building and running images locally
 

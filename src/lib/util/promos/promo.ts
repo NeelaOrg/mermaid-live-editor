@@ -41,6 +41,10 @@ const hiddenPromotionsStore: Writable<Record<string, number>> = persist(
 );
 
 export const getActivePromotion = (): (Promotion & { id: string }) | undefined => {
+  if (!env.isEnabledPromotions) {
+    return;
+  }
+
   if (!env.isEnabledMermaidChartLinks) {
     return;
   }

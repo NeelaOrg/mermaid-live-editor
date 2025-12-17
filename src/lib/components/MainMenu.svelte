@@ -2,6 +2,7 @@
   import McWrapper from '$/components/McWrapper.svelte';
   import * as Popover from '$/components/ui/popover';
   import { Switch } from '$/components/ui/switch';
+  import { env } from '$/util/env';
   import { urlsStore } from '$/util/state';
   import { cn } from '$/utils';
   import { mode, setMode } from 'mode-watcher';
@@ -31,13 +32,17 @@
   const menuItems: MenuItem[] = $derived([
     { label: 'New', icon: AddIcon, href: $urlsStore.new, renderer: menuItem },
     { label: 'Duplicate', icon: DuplicateIcon, href: window.location.href, renderer: menuItem },
-    {
-      href: $urlsStore.mermaidChart({ medium: 'main_menu' }).playground,
-      icon: PlaygroundIcon,
-      isSectionEnd: true,
-      label: 'Edit in Playground',
-      renderer: mcMenuItem
-    },
+    ...(env.isEnabledPlaygroundLinks
+      ? ([
+          {
+            href: $urlsStore.mermaidChart({ medium: 'main_menu' }).playground,
+            icon: PlaygroundIcon,
+            isSectionEnd: true,
+            label: 'Edit in Playground',
+            renderer: mcMenuItem
+          }
+        ] satisfies MenuItem[])
+      : []),
     {
       label: 'Mermaid.js',
       icon: MermaidTailIcon,

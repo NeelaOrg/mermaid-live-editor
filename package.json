@@ -12,8 +12,7 @@
     "lint": "prettier --check --cache . && eslint .",
     "lint:fix": "prettier --write --cache . && eslint --fix .",
     "format": "prettier --write --cache .",
-    "pre-commit": "lint-staged",
-    "postinstall": "husky install && svelte-kit sync && (git config blame.ignoreRevsFile .git-blame-ignore-revs || true)",
+    "postinstall": "svelte-kit sync && (git config blame.ignoreRevsFile .git-blame-ignore-revs || true)",
     "test:unit": "vitest",
     "test:unit:ui": "vitest --ui",
     "test:unit:coverage": "vitest run --coverage",
@@ -58,9 +57,7 @@
     "eslint-plugin-unicorn": "^60.0.0",
     "esserializer": "^1.3.11",
     "globals": "^16.0.0",
-    "husky": "^8.0.3",
     "jsdom": "^25.0.1",
-    "lint-staged": "^15.5.1",
     "lucide-svelte": "^0.507.0",
     "node-html-parser": "^6.1.13",
     "paneforge": "1.0.0-next.6",
@@ -84,6 +81,7 @@
     "vitest-dom": "^0.1.1"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.0",
     "@codemirror/lang-json": "^6.0.1",
     "@codemirror/lang-markdown": "^6.3.2",
     "@codemirror/lang-yaml": "^6.1.2",
@@ -97,6 +95,7 @@
     "@mermaid-js/layout-elk": "^0.1.9",
     "@mermaid-js/layout-tidy-tree": "^0.2.0",
     "@mermaid-js/mermaid-zenuml": "^0.2.2",
+    "ai": "^5.0.0",
     "codemirror": "^6.0.1",
     "dayjs": "^1.11.13",
     "hammerjs": "^2.0.8",
@@ -110,13 +109,8 @@
     "random-word-slugs": "0.1.7",
     "svg-pan-zoom": "3.6.2",
     "svg2roughjs": "^3.2.1",
-    "uuid": "9.0.1"
-  },
-  "lint-staged": {
-    "*.{ts,svelte,js,css,md,json}": [
-      "prettier --plugin-search-dir=. --write",
-      "eslint "
-    ]
+    "uuid": "9.0.1",
+    "zod": "^4.0.0"
   },
   "engines": {
     "node": ">=20.19.0"

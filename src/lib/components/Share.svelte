@@ -30,7 +30,7 @@
           The content of the diagrams you create never leaves your browser.
         </Dialog.Description>
       </div>
-      {#if env.isEnabledMermaidChartLinks}
+      {#if env.isEnabledMermaidChartLinks && env.isEnabledPlaygroundLinks}
         <Separator />
         <div class="flex flex-col gap-2">
           <h2 class="flex items-center gap-2">

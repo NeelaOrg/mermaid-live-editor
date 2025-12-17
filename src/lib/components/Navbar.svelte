@@ -14,6 +14,7 @@
   import { Separator } from '$/components/ui/separator';
   import { Switch } from '$/components/ui/switch';
   import { dismissPromotion, getActivePromotion } from '$lib/util/promos/promo';
+  import { env } from '$lib/util/env';
   import { urlsStore } from '$lib/util/state';
   import { MCBaseURL } from '$lib/util/util';
   import type { ComponentProps, Snippet } from 'svelte';
@@ -99,32 +100,34 @@
       </a>
 
       <McWrapper>
-        <div class="hidden items-center justify-center gap-4 md:flex">
-          <Separator orientation="vertical" />
-          <Switch
-            id="editorMode"
-            class="data-[state=checked]:bg-secondary"
-            checked={isReferral}
-            onclick={() => {
-              logEvent('playgroundToggle', { isReferred: isReferral });
-              // Wait for the event to be logged
-              setTimeout(() => {
-                window.open(
-                  $urlsStore.mermaidChart({ medium: 'toggle' }).playground,
-                  '_self',
-                  // Do not send referrer header, if the user already came from playground
-                  isReferral ? 'noreferrer' : ''
-                );
-              }, 100);
-            }} />
+        {#if env.isEnabledPlaygroundLinks}
+          <div class="hidden items-center justify-center gap-4 md:flex">
+            <Separator orientation="vertical" />
+            <Switch
+              id="editorMode"
+              class="data-[state=checked]:bg-secondary"
+              checked={isReferral}
+              onclick={() => {
+                logEvent('playgroundToggle', { isReferred: isReferral });
+                // Wait for the event to be logged
+                setTimeout(() => {
+                  window.open(
+                    $urlsStore.mermaidChart({ medium: 'toggle' }).playground,
+                    '_self',
+                    // Do not send referrer header, if the user already came from playground
+                    isReferral ? 'noreferrer' : ''
+                  );
+                }, 100);
+              }} />
 
-          <a
-            href={$urlsStore.mermaidChart({ medium: 'toggle' }).playground}
-            class="whitespace-nowrap">
-            Playground <span class="hidden text-sm opacity-50 lg:inline"
-              >- more features, no account required</span>
-          </a>
-        </div>
+            <a
+              href={$urlsStore.mermaidChart({ medium: 'toggle' }).playground}
+              class="whitespace-nowrap">
+              Playground <span class="hidden text-sm opacity-50 lg:inline"
+                >- more features, no account required</span>
+            </a>
+          </div>
+        {/if}
       </McWrapper>
     </div>
   </div>
