@@ -39,7 +39,8 @@ export const POST = async ({ request }) => {
     return json({ error: { message: 'Missing code' }, status: 'fail' }, { status: 400 });
   }
 
-  const requestedViewId = typeof body.viewId === 'string' && body.viewId.trim() ? body.viewId.trim() : undefined;
+  const requestedViewId =
+    typeof body.viewId === 'string' && body.viewId.trim() ? body.viewId.trim() : undefined;
 
   let likec4: LikeC4 | undefined;
   try {
@@ -89,7 +90,11 @@ export const POST = async ({ request }) => {
     return json({
       status: 'success',
       svg: selected.svg,
-      viewId: selected.id
+      viewId: selected.id,
+      views: views.map((v) => ({
+        id: v.id,
+        title: v.title ?? v.name ?? v.id
+      }))
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

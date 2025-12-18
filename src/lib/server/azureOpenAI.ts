@@ -1,7 +1,4 @@
 import { env as privateEnv } from '$env/dynamic/private';
-import { createAzure } from '@ai-sdk/azure';
-import { generateObject } from 'ai';
-import { z } from 'zod';
 
 interface AzureConfig {
   endpoint: string;
@@ -28,9 +25,9 @@ const getAzureConfig = (): AzureConfig => {
   const debugLog = (privateEnv.AZURE_OPENAI_DEBUG_LOG ?? 'false') === 'true';
   const reasoningSummaryRaw = privateEnv.AZURE_OPENAI_REASONING_SUMMARY ?? '';
   const reasoningSummary =
-    reasoningSummaryRaw === 'auto' || reasoningSummaryRaw === 'detailed'
-      ? (reasoningSummaryRaw as 'auto' | 'detailed')
-      : undefined;
+    reasoningSummaryRaw === 'medium' || reasoningSummaryRaw === 'medium'
+      ? (reasoningSummaryRaw as 'medium' | 'medium')
+      : 'medium';
 
   if (!endpoint || !apiKey || !deployment) {
     throw new Error(
@@ -59,11 +56,6 @@ interface MermaidEditResult {
   reasoning?: string;
   responseId?: string;
 }
-
-const mermaidEditSchema = z.object({
-  updatedCode: z.string(),
-  summary: z.string()
-});
 
 const parseImageDataUrl = (dataUrl: string): { mimeType: string; bytes: Uint8Array } => {
   const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(dataUrl);
@@ -226,12 +218,6 @@ export const mermaidEditWithAzureResponses = async ({
   // `@ai-sdk/azure` expects `baseURL` without `/v1` (it appends `/v1{path}` itself).
   // Typical env value: `https://{resource}.openai.azure.com/openai/v1`
   const baseURL = rawEndpoint.replace(/\/v1$/i, '');
-  const azure = createAzure({
-    apiKey,
-    apiVersion,
-    baseURL,
-    useDeploymentBasedUrls
-  });
 
   const diagramLanguage = language ?? 'mermaid';
   let system =
@@ -241,7 +227,8 @@ export const mermaidEditWithAzureResponses = async ({
           'Given LikeC4 source code and a requested change, produce updated LikeC4 source code that satisfies the request.',
           'Return JSON only matching the provided schema.',
           'Do not include Markdown, code fences, or extra keys.',
-          'Keep LikeC4 syntax valid and preserve the intent unless explicitly requested to change it.'
+          'Keep LikeC4 syntax valid and preserve the intent unless explicitly requested to change it.',
+          'Must use the web search tool to get the latest syntax.'
         ].join(' ')
       : [
           'You are an expert Mermaid diagram editor.',
@@ -249,7 +236,8 @@ export const mermaidEditWithAzureResponses = async ({
           'Return JSON only matching the provided schema.',
           'Do not include Markdown, code fences, or extra keys.',
           'Preserve the diagram type and intent unless explicitly requested to change it.',
-          'Keep Mermaid syntax valid.'
+          'Keep Mermaid syntax valid.',
+          'Must use the web search tool to get the latest syntax.'
         ].join(' ');
   if (webSearchEnabled) {
     system = `${system} If you are unsure about syntax, use the web_search tool to verify the correct language and keywords before editing.`;
@@ -282,21 +270,8 @@ export const mermaidEditWithAzureResponses = async ({
     });
   }
 
-  const tools = webSearchEnabled
-    ? {
-        web_search_preview: azure.tools.webSearchPreview({
-          externalWebAccess: true,
-          searchContextSize: 'high',
-          userLocation: {
-            type: 'approximate',
-            city: 'San Francisco',
-            region: 'California'
-          }
-        })
-      }
-    : undefined;
-  const toolChoice =
-    tools && webSearchForce ? { type: 'tool', toolName: 'web_search_preview' } : undefined;
+  const tools = webSearchEnabled ? [{ type: 'web_search_preview' as const }] : undefined;
+  const toolChoice = undefined;
   const messagesForModel = [{ role: 'user', content: userContent }] as const;
   const messagesForLog = [
     {
@@ -321,10 +296,10 @@ export const mermaidEditWithAzureResponses = async ({
           instructionChars: instruction.length,
           model,
           requestPayload: {
-            systemPreview: safeSnippet(system, 200),
-            messages: summarizeMessages(userContent),
-            tools: tools ? Object.keys(tools) : [],
-            toolChoice: toolChoice ? 'tool:web_search_preview' : 'auto'
+            system,
+            messages: userContent,
+            tools,
+            toolChoice
           },
           resolvedResponsesUrl: buildAzureResponsesUrl({
             apiVersion,
@@ -339,9 +314,8 @@ export const mermaidEditWithAzureResponses = async ({
       );
 
       const generateArgsForLog = {
-        model: `${deployment} (azure.responses)`,
-        schema: 'mermaidEditSchema',
-        system: safeSnippet(system, 500),
+        model: deployment,
+        system,
         messages: messagesForLog,
         providerOptions: {
           openai: {
@@ -353,61 +327,135 @@ export const mermaidEditWithAzureResponses = async ({
           }
         },
         toolChoice,
-        tools: tools ? Object.keys(tools) : []
+        tools
       };
       console.log('[ai-edit] generateObject payload', JSON.stringify(generateArgsForLog, null, 2));
     }
 
-    const result = await generateObject({
-      model: azure.responses(deployment),
-      schema: mermaidEditSchema,
-      system,
-      messages: messagesForModel,
-      providerOptions: {
-        openai: {
-          parallelToolCalls: false,
-          reasoningSummary,
-          store: false,
-          strictJsonSchema: true,
-          textVerbosity: 'low'
-        }
-      },
-      toolChoice,
-      tools
-    });
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'api-key': apiKey
+    };
 
-    const providerMetadata = result.providerMetadata as
-      | {
-          azure?: { responseId?: unknown };
-          openai?: { responseId?: unknown };
+    const mapContent = (parts: typeof userContent, imageUrl?: string) =>
+      parts.map((part) =>
+        part.type === 'image'
+          ? { type: 'input_image' as const, image_url: imageUrl }
+          : { type: 'input_text' as const, text: part.text }
+      );
+
+    const body = {
+      model: deployment,
+      input: [
+        { role: 'system', content: [{ type: 'input_text' as const, text: system }] },
+        {
+          role: 'user',
+          content: mapContent(userContent, imageDataUrl)
         }
-      | undefined;
-    const responseId = providerMetadata?.azure?.responseId ?? providerMetadata?.openai?.responseId;
-    const toolCalls = extractToolCallsFromOpenAIResponse(result.response?.body);
+      ],
+      tools,
+      tool_choice: 'auto',
+      parallel_tool_calls: false,
+      store: false,
+      reasoning: reasoningSummary ? { effort: reasoningSummary } : undefined,
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'response',
+          strict: true,
+          schema: {
+            type: 'object',
+            properties: {
+              updatedCode: { type: 'string' },
+              summary: { type: 'string' }
+            },
+            required: ['updatedCode', 'summary'],
+            additionalProperties: false
+          }
+        },
+        verbosity: 'low'
+      }
+    };
+
+    const response = await fetch(
+      `${rawEndpoint}/responses?api-version=${encodeURIComponent(apiVersion)}`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+      }
+    );
+
+    const rawText = await response.text();
+    let rawJson: any = null;
+    try {
+      rawJson = JSON.parse(rawText);
+    } catch {
+      /* ignore */
+    }
 
     if (debugLog) {
-      const rawResponseBody = result.response?.body;
+      console.log('[ai-edit] response raw', rawText);
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        `Azure OpenAI request failed: status=${response.status} body=${safeSnippet(rawText, 2000)}`
+      );
+    }
+
+    const outputArray: any[] = Array.isArray(rawJson?.output) ? rawJson.output : [];
+    const toolCalls = extractToolCallsFromOpenAIResponse(rawJson);
+    const responseId =
+      rawJson?.id ||
+      (rawJson?.providerMetadata?.azure?.responseId ??
+        rawJson?.providerMetadata?.openai?.responseId);
+
+    const messageContent = outputArray.find((o) => o.type === 'message');
+    let updatedCode: string | undefined;
+    let summary: string | undefined;
+    if (messageContent?.content?.[0]?.text) {
+      const text = messageContent.content[0].text as string;
+      try {
+        const parsed = JSON.parse(text);
+        updatedCode = parsed.updatedCode;
+        summary = parsed.summary;
+      } catch {
+        updatedCode = text;
+      }
+    }
+
+    if (!updatedCode) {
+      throw new Error('Azure OpenAI response missing updatedCode');
+    }
+
+    if (debugLog) {
       console.log(
         '[ai-edit] response',
-        JSON.stringify({
-          finishReason: result.finishReason,
-          hasReasoning: Boolean(result.reasoning && result.reasoning.trim()),
-          model,
-          responseId: typeof responseId === 'string' ? responseId : undefined,
-          rawResponseBody: safeSnippet(rawResponseBody, 1000),
-          toolCalls: toolCalls.map((t) => ({
-            actionType: t.action?.type,
-            query: safeSnippet(t.action?.query ?? '', 120),
-            toolName: t.toolName
-          })),
-          usage: result.usage
-        })
+        JSON.stringify(
+          {
+            responseId: typeof responseId === 'string' ? responseId : undefined,
+            rawJson,
+            toolCalls: toolCalls.map((t) => ({
+              actionType: t.action?.type,
+              query: t.action?.query,
+              toolName: t.toolName,
+              sources: t.sources
+            })),
+            usage: rawJson?.usage,
+            updatedCode,
+            summary
+          },
+          null,
+          2
+        )
       );
     }
 
     return {
-      ...result.object,
-      reasoning: result.reasoning,
+      updatedCode,
+      summary: summary ?? '',
+      reasoning: rawJson?.reasoning?.summary ?? undefined,
       responseId: typeof responseId === 'string' ? responseId : undefined,
       toolCalls: toolCalls.length ? toolCalls : undefined
     };

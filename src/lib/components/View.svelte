@@ -22,6 +22,9 @@
   let rough: boolean;
   let view: HTMLDivElement | undefined = $state();
   let error = $state(false);
+  let availableViews: Array<{ id: string; title: string }> = $state([]);
+  let selectedViewId: string | undefined = $state();
+  let currentLanguage: string | undefined = $state('mermaid');
   let panZoom = true;
   let manualUpdate = true;
   let waitForFontAwesomeToLoad: FontAwesome['waitForFontAwesomeToLoad'] | undefined = $state();
@@ -44,6 +47,7 @@
 
   const handleStateChange = async (state: ValidatedState) => {
     const startTime = Date.now();
+    const forceRender = state.updateDiagram;
     if (state.error !== undefined) {
       error = true;
       return;
@@ -58,7 +62,8 @@
           code === state.code &&
           config === state.mermaid &&
           rough === state.rough &&
-          panZoom === state.panZoom
+          panZoom === state.panZoom &&
+          !forceRender
         ) {
           return;
         }
@@ -69,6 +74,7 @@
 
         code = state.code;
         config = state.mermaid;
+        currentLanguage = state.language ?? 'mermaid';
         rough = state.rough;
         panZoom = state.panZoom ?? true;
 
@@ -78,13 +84,14 @@
           const res = await fetch('/api/likec4/render', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ code: state.code })
+            body: JSON.stringify({ code: state.code, viewId: selectedViewId })
           });
           const data = (await res.json().catch(() => null)) as
             | {
                 status: 'success';
                 svg: string;
                 viewId: string;
+                views?: Array<{ id: string; title: string }>;
               }
             | {
                 status: 'fail';
@@ -122,6 +129,13 @@
             container.append(pre);
             error = true;
             return;
+          }
+
+          availableViews = data.views ?? [];
+          const hasSelected =
+            selectedViewId && availableViews.some((v) => v.id === selectedViewId);
+          if (!hasSelected) {
+            selectedViewId = data.viewId ?? availableViews[0]?.id;
           }
 
           diagramType = 'likec4';
@@ -210,6 +224,9 @@
       } else if (manualUpdate) {
         manualUpdate = false;
       }
+      if (forceRender) {
+        updateCodeStore({ updateDiagram: false });
+      }
     } catch (error_) {
       console.error('view fail', error_);
       error = true;
@@ -238,6 +255,22 @@
   id="view"
   bind:this={view}
   class={['h-full w-full', shouldShowGrid && `grid-bg-${$mode}`, error && 'opacity-50']}>
+  {#if (currentLanguage ?? 'mermaid') === 'likec4' && availableViews.length > 1}
+    <div class="flex items-center gap-2 px-3 py-2">
+      <label for="view-select" class="text-sm text-muted-foreground whitespace-nowrap">View</label>
+      <select
+        id="view-select"
+        class="select select-sm max-w-xs"
+        bind:value={selectedViewId}
+        onchange={() => {
+          updateCodeStore({ updateDiagram: true });
+        }}>
+        {#each availableViews as v}
+          <option value={v.id}>{v.title}</option>
+        {/each}
+      </select>
+    </div>
+  {/if}
   <div id="container" bind:this={container} class="h-full overflow-auto"></div>
 </div>
 
