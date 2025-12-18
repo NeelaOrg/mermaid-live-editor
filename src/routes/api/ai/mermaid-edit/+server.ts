@@ -5,6 +5,7 @@ type MermaidEditRequest = {
   code?: unknown;
   instruction?: unknown;
   imageDataUrl?: unknown;
+  language?: unknown;
 };
 
 export const POST = async ({ request }) => {
@@ -40,11 +41,21 @@ export const POST = async ({ request }) => {
     }
   }
 
+  if (body.language != null) {
+    if (body.language !== 'mermaid' && body.language !== 'likec4') {
+      return json(
+        { status: 'fail', error: { message: 'Invalid language (expected mermaid or likec4)' } },
+        { status: 400 }
+      );
+    }
+  }
+
   try {
     const result = await mermaidEditWithAzureResponses({
       code: body.code,
       instruction: body.instruction,
-      imageDataUrl: typeof body.imageDataUrl === 'string' ? body.imageDataUrl : undefined
+      imageDataUrl: typeof body.imageDataUrl === 'string' ? body.imageDataUrl : undefined,
+      language: body.language === 'likec4' ? 'likec4' : 'mermaid'
     });
 
     return json({
@@ -52,6 +63,9 @@ export const POST = async ({ request }) => {
       error: null,
       code: body.code,
       instruction: body.instruction,
+      reasoning: result.reasoning ?? null,
+      responseId: result.responseId ?? null,
+      toolCalls: result.toolCalls ?? null,
       updatedCode: result.updatedCode,
       summary: result.summary ?? null
     });

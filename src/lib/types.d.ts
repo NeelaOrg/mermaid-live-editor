@@ -22,12 +22,15 @@ export interface Tab {
   icon: Component;
 }
 
+export type DiagramLanguage = 'likec4' | 'mermaid';
+
 export interface State {
   code: string;
   mermaid: string;
   updateDiagram: boolean;
   rough: boolean;
   // All new options must be optional, as users would have old states saved
+  language?: DiagramLanguage;
   renderCount?: number;
   panZoom?: boolean;
   grid?: boolean;

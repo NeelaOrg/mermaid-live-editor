@@ -91,7 +91,10 @@
   } as const satisfies DocumentationConfig;
 
   const doc = $derived.by(() => {
-    const { editorMode, diagramType } = $stateStore;
+    const { editorMode, diagramType, language } = $stateStore;
+    if ((language ?? 'mermaid') === 'likec4') {
+      return { key: 'likec4', url: 'https://likec4.dev/dsl/intro/' };
+    }
     if (!diagramType) {
       return { key: '', url: docURLBase };
     }

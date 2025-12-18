@@ -1,5 +1,5 @@
 import { C } from '$/constants';
-import type { ErrorHash, MarkerData, State, ValidatedState } from '$/types';
+import type { DiagramLanguage, ErrorHash, MarkerData, State, ValidatedState } from '$/types';
 import { debounce } from 'lodash-es';
 import type { MermaidConfig } from 'mermaid';
 import { derived, get, writable, type Readable } from 'svelte/store';
@@ -23,6 +23,7 @@ export const defaultState: State = {
     C -->|Three| F[fa:fa-car Car]
   `,
   grid: true,
+  language: 'mermaid',
   mermaid: formatJSON({
     theme: 'default'
   }),
@@ -50,6 +51,7 @@ export const currentState: ValidatedState = (() => {
   return {
     ...state,
     editorMode: state.editorMode ?? 'code',
+    language: state.language ?? 'mermaid',
     error: undefined,
     errorMarkers: [],
     serialized: serializeState(state)
@@ -62,6 +64,7 @@ const processState = async (state: State) => {
   const processed: ValidatedState = {
     ...state,
     editorMode: state.editorMode ?? 'code',
+    language: state.language ?? 'mermaid',
     error: undefined,
     errorMarkers: [],
     serialized: ''
@@ -69,19 +72,23 @@ const processState = async (state: State) => {
   // No changes should be done to fields part of `state`.
   try {
     processed.serialized = serializeState(state);
-    const { diagramType } = await parse(state.code);
-    processed.diagramType = diagramType;
-    if (lastDiagramType === 'zenuml' && diagramType !== lastDiagramType) {
-      // Temp Hack to refresh page after displaying ZenUML.
-      setTimeout(() => window.location.reload(), 500);
+    if ((processed.language ?? 'mermaid') === 'mermaid') {
+      const { diagramType } = await parse(state.code);
+      processed.diagramType = diagramType;
+      if (lastDiagramType === 'zenuml' && diagramType !== lastDiagramType) {
+        // Temp Hack to refresh page after displaying ZenUML.
+        setTimeout(() => window.location.reload(), 500);
+      }
+      lastDiagramType = diagramType;
+    } else {
+      processed.diagramType = 'likec4';
     }
-    lastDiagramType = diagramType;
     JSON.parse(state.mermaid);
   } catch (error) {
     processed.error = error as Error;
     errorDebug();
     console.error(error);
-    if ('hash' in error) {
+    if ((processed.language ?? 'mermaid') === 'mermaid' && 'hash' in error) {
       try {
         let errorString = processed.error.toString();
         const errorLineText = extractErrorLineText(errorString);
@@ -198,6 +205,17 @@ export const updateCodeStore = (newState: Partial<State>): void => {
   inputStateStore.update((state) => {
     renderCount++;
     return { ...state, ...newState, renderCount };
+  });
+};
+
+export const updateDiagramLanguage = (language: DiagramLanguage): void => {
+  errorDebug();
+  updateCodeStore({
+    editorMode: 'code',
+    language,
+    pan: undefined,
+    updateDiagram: true,
+    zoom: undefined
   });
 };
 

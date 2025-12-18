@@ -18,6 +18,7 @@
       class?: string;
     };
     onselect?: (tab: Tab) => void;
+    tabsPrefix?: Snippet;
     actions?: Snippet;
     children: Snippet;
   }
@@ -31,6 +32,7 @@
     title,
     icon,
     onselect,
+    tabsPrefix,
     actions,
     children
   }: Props = $props();
@@ -68,6 +70,7 @@
       </span>
     {/if}
     {#if isOpen && tabs && tabs.length > 0}
+      {@render tabsPrefix?.()}
       <Tabs {onselect} {tabs} {activeTabID} />
     {/if}
 

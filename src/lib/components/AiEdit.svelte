@@ -92,6 +92,7 @@
         body: JSON.stringify({
           code: $stateStore.code,
           instruction: current,
+          language: $stateStore.language ?? 'mermaid',
           imageDataUrl: attachedImageDataUrl
         })
       });
@@ -101,6 +102,9 @@
             status: 'success';
             updatedCode: string;
             summary: string | null;
+            reasoning?: string | null;
+            responseId?: string | null;
+            toolCalls?: unknown;
           }
         | {
             status: 'fail';
@@ -117,7 +121,23 @@
       }
 
       updateCode(data.updatedCode, { resetPanZoom: true, updateDiagram: true });
-      addMessage('assistant', data.summary ?? 'Updated the diagram.');
+      const parts: string[] = [];
+      parts.push(data.summary ?? 'Updated the diagram.');
+      if (data.responseId) {
+        parts.push(`responseId: ${data.responseId}`);
+      }
+      const toolCalls = data.toolCalls;
+      if (Array.isArray(toolCalls) && toolCalls.length) {
+        const names = toolCalls
+          .map((t) => (t as { toolName?: unknown }).toolName)
+          .filter((n): n is string => typeof n === 'string' && n.trim());
+        if (names.length) parts.push(`tools: ${Array.from(new Set(names)).join(', ')}`);
+      }
+      if (data.reasoning && data.reasoning.trim()) {
+        const reasoning = data.reasoning.length > 1200 ? `${data.reasoning.slice(0, 1200)}…` : data.reasoning;
+        parts.push(`reasoning:\n${reasoning}`);
+      }
+      addMessage('assistant', parts.join('\n'));
       attachedImageDataUrl = null;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

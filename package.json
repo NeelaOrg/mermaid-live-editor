@@ -81,6 +81,7 @@
     "vitest-dom": "^0.1.1"
   },
   "dependencies": {
+    "@ai-sdk/azure": "^2.0.90",
     "@ai-sdk/openai": "^2.0.0",
     "@codemirror/lang-json": "^6.0.1",
     "@codemirror/lang-markdown": "^6.3.2",
@@ -100,6 +101,7 @@
     "dayjs": "^1.11.13",
     "hammerjs": "^2.0.8",
     "js-base64": "3.7.7",
+    "likec4": "1.46.0",
     "lodash-es": "^4.17.21",
     "mermaid": "^11.12.0",
     "mode-watcher": "^0.5.1",

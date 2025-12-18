@@ -18,9 +18,9 @@
   import { Toggle } from '$/components/ui/toggle';
   import VersionSecurityToolbar from '$/components/VersionSecurityToolbar.svelte';
   import View from '$/components/View.svelte';
-  import type { EditorMode, Tab } from '$/types';
+  import type { DiagramLanguage, EditorMode, Tab } from '$/types';
   import { PanZoomState } from '$/util/panZoom';
-  import { stateStore, updateCodeStore, urlsStore } from '$/util/state';
+  import { stateStore, updateCodeStore, updateDiagramLanguage, urlsStore } from '$/util/state';
   import { logEvent } from '$/util/stats';
   import { initHandler } from '$/util/util';
   import { onMount } from 'svelte';
@@ -47,6 +47,12 @@
       title: 'Config'
     }
   ];
+
+  const onDiagramLanguageChange = (e: Event) => {
+    const value = (e.currentTarget as HTMLSelectElement | null)?.value as DiagramLanguage | undefined;
+    if (!value) return;
+    updateDiagramLanguage(value);
+  };
 
   let width = $state(0);
   let isMobile = $derived(width < 640);
@@ -117,6 +123,19 @@
               tabs={editorTabs}
               activeTabID={$stateStore.editorMode}
               isClosable={false}>
+              {#snippet tabsPrefix()}
+                <div class="mr-2 flex items-center gap-2 text-xs opacity-80">
+                  <label class="sr-only" for="diagram-language">Diagram language</label>
+                  <select
+                    id="diagram-language"
+                    class="h-7 rounded-md border border-border bg-background px-2 text-xs"
+                    value={$stateStore.language ?? 'mermaid'}
+                    onchange={onDiagramLanguageChange}>
+                    <option value="mermaid">Mermaid</option>
+                    <option value="likec4">LikeC4</option>
+                  </select>
+                </div>
+              {/snippet}
               {#snippet actions()}
                 <DiagramDocButton />
               {/snippet}

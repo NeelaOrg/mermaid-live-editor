@@ -62,7 +62,7 @@
       });
     });
 
-    const unsubscribeState = stateStore.subscribe(({ editorMode, code, mermaid }) => {
+    const unsubscribeState = stateStore.subscribe(({ editorMode, code, mermaid, language: diagramLanguage }) => {
       const text = editorMode === 'code' ? code : mermaid;
       if (currentText === text || !editorView) {
         return;
@@ -78,12 +78,24 @@
       const stateLanguage = editorView.state.facet(language);
       const isStateJson = stateLanguage === jsonLanguage;
       const isCodeJson = editorMode === 'config';
-      if (stateLanguage && isStateJson === isCodeJson) {
+      const shouldBeJson = isCodeJson;
+      const shouldBeMermaidLike =
+        editorMode === 'code' && (diagramLanguage ?? 'mermaid') === 'mermaid';
+
+      if (stateLanguage && isStateJson === shouldBeJson) {
+        // ok
+      } else if (stateLanguage) {
+        // will reconfigure below
+      }
+
+      if (shouldBeJson) {
+        editorView.dispatch({ effects: languageCompartment.reconfigure(json()) });
         return;
       }
+
       editorView.dispatch({
         effects: languageCompartment.reconfigure(
-          isCodeJson ? json() : yamlFrontmatter({ content: markdown() })
+          shouldBeMermaidLike ? yamlFrontmatter({ content: markdown() }) : []
         )
       });
     });

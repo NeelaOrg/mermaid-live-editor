@@ -31,6 +31,11 @@
     'mermaid',
     monaco.Uri.parse('internal://mermaid.mmd')
   );
+  const likec4Model = monaco.editor.createModel(
+    '',
+    'plaintext',
+    monaco.Uri.parse('internal://diagram.likec4')
+  );
 
   onMount(() => {
     self.MonacoEnvironment = {
@@ -69,12 +74,18 @@
       onUpdate(currentText);
     });
 
-    const unsubscribeState = stateStore.subscribe(({ errorMarkers, editorMode, code, mermaid }) => {
+    const unsubscribeState = stateStore.subscribe(
+      ({ errorMarkers, editorMode, code, mermaid, language }) => {
       if (!editor) {
         return;
       }
 
-      const model = editorMode === 'code' ? mermaidModel : jsonModel;
+      const model =
+        editorMode === 'code'
+          ? language === 'likec4'
+            ? likec4Model
+            : mermaidModel
+          : jsonModel;
 
       if (editor.getModel()?.id !== model.id) {
         editor.setModel(model);
@@ -90,7 +101,8 @@
 
       // Display/clear errors
       monaco.editor.setModelMarkers(model, 'mermaid', errorMarkers);
-    });
+      }
+    );
 
     const unsubscribeMode = mode.subscribe((mode) => {
       if (editor) {
@@ -114,6 +126,7 @@
       resizeObserver.disconnect();
       jsonModel.dispose();
       mermaidModel.dispose();
+      likec4Model.dispose();
       editor?.dispose();
     };
   });
