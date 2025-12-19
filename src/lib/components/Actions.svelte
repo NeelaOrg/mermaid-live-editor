@@ -9,6 +9,7 @@
   import * as ToggleGroup from '$/components/ui/toggle-group';
   import { TID } from '$/constants';
   import { getDomain } from '$/util/util';
+  import { render as renderMermaid } from '$/util/mermaid';
   import { browser } from '$app/environment';
   import { waitForRender } from '$lib/util/autoSync';
   import { inputStateStore, stateStore, urlsStore } from '$lib/util/state';
@@ -29,9 +30,11 @@
 
   let currentLanguage = 'mermaid';
   let currentCode = '';
-  stateStore.subscribe(({ language, code }) => {
+  let currentMermaidConfig = '';
+  stateStore.subscribe(({ language, code, mermaid }) => {
     currentLanguage = language ?? 'mermaid';
     currentCode = code;
+    currentMermaidConfig = mermaid ?? '';
   });
 
   const logExport = (...args: unknown[]) => {
@@ -147,11 +150,45 @@
     relY?: number;
     relW?: number;
     relH?: number;
+    nodeTitle?: string;
+    nodeX?: number;
+    nodeY?: number;
+    nodeWidth?: number;
+    nodeHeight?: number;
   };
 
   const parseSvgText = (text: string): SVGSVGElement | null => {
     const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
     return doc.querySelector('svg');
+  };
+
+  const renderMermaidPngSvg = async (): Promise<SVGSVGElement | undefined> => {
+    try {
+      const rawConfig = currentMermaidConfig ? (JSON.parse(currentMermaidConfig) as Record<string, unknown>) : {};
+      const pngConfig = {
+        ...rawConfig,
+        htmlLabels: false,
+        flowchart: { ...(rawConfig.flowchart as Record<string, unknown> | undefined), htmlLabels: false },
+        sequence: { ...(rawConfig.sequence as Record<string, unknown> | undefined), htmlLabels: false },
+        state: { ...(rawConfig.state as Record<string, unknown> | undefined), htmlLabels: false },
+        class: { ...(rawConfig.class as Record<string, unknown> | undefined), htmlLabels: false },
+        er: { ...(rawConfig.er as Record<string, unknown> | undefined), htmlLabels: false },
+        gantt: { ...(rawConfig.gantt as Record<string, unknown> | undefined), htmlLabels: false },
+        journey: { ...(rawConfig.journey as Record<string, unknown> | undefined), htmlLabels: false }
+      };
+      const result = await renderMermaid(pngConfig, currentCode, `png-${Date.now()}`);
+      const svgText = result?.svg?.trim();
+      if (!svgText) return undefined;
+      const svgEl = parseSvgText(svgText);
+      if (svgEl) {
+        svgEl.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+      }
+      logExport('png mermaid render', { hasForeignObject: svgText.includes('<foreignObject') });
+      return svgEl ?? undefined;
+    } catch (error) {
+      logExport('png mermaid render failed', error);
+      return undefined;
+    }
   };
 
   const fetchSvgFromUrl = async (src: string): Promise<SVGSVGElement | null> => {
@@ -271,6 +308,8 @@
       });
       logExport('likec4 icon candidates from nodes', icons.length);
     }
+    const round = (value?: number) =>
+      typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 1000) / 1000 : value;
     const snapshots = await Promise.all(
       icons.map(async (iconEl) => {
         const img =
@@ -292,27 +331,64 @@
               : null;
         if (!finalRect) return null;
         const computed = getComputedStyle(iconEl);
-        const nodeEl =
+        const closestNodeEl =
           iconEl instanceof HTMLElement
             ? (iconEl.closest('[data-testid^="rf__node-"], [data-id]') as HTMLElement | null)
             : null;
-        const nodeRect = nodeEl?.getBoundingClientRect();
         let nodeId: string | undefined;
-        const dataId = nodeEl?.getAttribute('data-id');
+        const dataId = closestNodeEl?.getAttribute('data-id');
         if (dataId) {
           nodeId = dataId;
         } else {
-          const testId = nodeEl?.getAttribute('data-testid');
+          const testId = closestNodeEl?.getAttribute('data-testid');
           if (testId?.startsWith('rf__node-')) {
             nodeId = testId.slice('rf__node-'.length);
           }
         }
+        const resolvedNodeEl = nodeId
+          ? (roots
+              .flatMap((root) => Array.from(root.querySelectorAll<HTMLElement>('[data-id], [data-testid^="rf__node-"]')))
+              .find((el) => el.getAttribute('data-id') === nodeId || el.getAttribute('data-testid') === `rf__node-${nodeId}`) ??
+            null)
+          : closestNodeEl;
+        if (nodeId && !resolvedNodeEl) {
+          logExport('likec4 node element not found for icon', nodeId);
+        }
+        const nodeRect = resolvedNodeEl?.getBoundingClientRect();
+        const nodeTitle =
+          resolvedNodeEl?.querySelector<HTMLElement>('[data-likec4-node-title]')?.textContent?.trim() ??
+          resolvedNodeEl?.querySelector<HTMLElement>('.likec4-element-title')?.textContent?.trim() ??
+          undefined;
         const relX =
           nodeRect && nodeRect.width ? (finalRect.left - nodeRect.left) / nodeRect.width : undefined;
         const relY =
           nodeRect && nodeRect.height ? (finalRect.top - nodeRect.top) / nodeRect.height : undefined;
         const relW = nodeRect && nodeRect.width ? finalRect.width / nodeRect.width : undefined;
         const relH = nodeRect && nodeRect.height ? finalRect.height / nodeRect.height : undefined;
+        logExport('likec4 icon snapshot', {
+          nodeId,
+          nodeTitle,
+          iconRect: {
+            x: round(finalRect.left - hostRect.left),
+            y: round(finalRect.top - hostRect.top),
+            width: round(finalRect.width),
+            height: round(finalRect.height)
+          },
+          nodeRect: nodeRect
+            ? {
+                x: round(nodeRect.left - hostRect.left),
+                y: round(nodeRect.top - hostRect.top),
+                width: round(nodeRect.width),
+                height: round(nodeRect.height)
+              }
+            : null,
+          rel: {
+            x: round(relX),
+            y: round(relY),
+            w: round(relW),
+            h: round(relH)
+          }
+        });
         return {
           svg: icon,
           x: finalRect.left - hostRect.left,
@@ -324,7 +400,12 @@
           relX,
           relY,
           relW,
-          relH
+          relH,
+          nodeTitle,
+          nodeX: nodeRect ? nodeRect.left - hostRect.left : undefined,
+          nodeY: nodeRect ? nodeRect.top - hostRect.top : undefined,
+          nodeWidth: nodeRect?.width,
+          nodeHeight: nodeRect?.height
         } satisfies LikeC4IconSnapshot;
       })
     );
@@ -360,6 +441,151 @@
     });
   };
 
+  const getSvgNodeBBox = (node: Element): { x: number; y: number; width: number; height: number } | undefined => {
+    const polygon = node.querySelector('polygon');
+    if (polygon) {
+      const points = polygon.getAttribute('points')?.trim();
+      if (points) {
+        const coords = points
+          .split(/\s+/)
+          .map((pair) => pair.split(',').map((v) => Number.parseFloat(v)))
+          .filter((pair) => pair.length === 2 && pair.every((n) => Number.isFinite(n))) as Array<
+          [number, number]
+        >;
+        if (coords.length) {
+          const xs = coords.map((p) => p[0]);
+          const ys = coords.map((p) => p[1]);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minY = Math.min(...ys);
+          const maxY = Math.max(...ys);
+          return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+        }
+      }
+    }
+    const rect = node.querySelector('rect');
+    if (rect) {
+      const x = Number.parseFloat(rect.getAttribute('x') ?? '0');
+      const y = Number.parseFloat(rect.getAttribute('y') ?? '0');
+      const width = Number.parseFloat(rect.getAttribute('width') ?? '0');
+      const height = Number.parseFloat(rect.getAttribute('height') ?? '0');
+      if ([x, y, width, height].every((n) => Number.isFinite(n))) {
+        return { x, y, width, height };
+      }
+    }
+    const ellipse = node.querySelector('ellipse');
+    if (ellipse) {
+      const cx = Number.parseFloat(ellipse.getAttribute('cx') ?? '0');
+      const cy = Number.parseFloat(ellipse.getAttribute('cy') ?? '0');
+      const rx = Number.parseFloat(ellipse.getAttribute('rx') ?? '0');
+      const ry = Number.parseFloat(ellipse.getAttribute('ry') ?? '0');
+      if ([cx, cy, rx, ry].every((n) => Number.isFinite(n))) {
+        return { x: cx - rx, y: cy - ry, width: rx * 2, height: ry * 2 };
+      }
+    }
+    return undefined;
+  };
+
+  const describeSvgNode = (node: Element) => ({
+    tag: node.tagName.toLowerCase(),
+    id: node.getAttribute('id'),
+    class: node.getAttribute('class'),
+    likec4Id:
+      node.getAttribute('likec4_id') ??
+      node.getAttribute('data-likec4-id') ??
+      node.getAttribute('likec4-id'),
+    dataId: node.getAttribute('data-id'),
+    dataTestId: node.getAttribute('data-testid'),
+    transform: node.getAttribute('transform')
+  });
+
+  const getSvgElementBBox = (node: Element): { x: number; y: number; width: number; height: number } | undefined => {
+    try {
+      if ('getBBox' in node) {
+        const bbox = (node as SVGGraphicsElement).getBBox();
+        if (bbox && bbox.width > 0 && bbox.height > 0) {
+          return { x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height };
+        }
+      }
+    } catch {
+      // getBBox can throw for non-rendered nodes; ignore for diagnostics
+    }
+    return getSvgNodeBBox(node);
+  };
+
+  const logSvgDiagnostics = (svg: SVGSVGElement, nodeTitle?: string, nodeId?: string): void => {
+    const viewBox = svg.getAttribute('viewBox') ?? '';
+    const viewBoxParts = viewBox.split(/\s+/).map(Number);
+    const vb =
+      viewBoxParts.length === 4 && viewBoxParts.every((n) => Number.isFinite(n))
+        ? { x: viewBoxParts[0], y: viewBoxParts[1], width: viewBoxParts[2], height: viewBoxParts[3] }
+        : undefined;
+    logExport('likec4 svg viewBox', vb ?? viewBox);
+    logExport('likec4 svg size', {
+      width: svg.getAttribute('width'),
+      height: svg.getAttribute('height')
+    });
+
+    const candidateSelectors = [
+      'g.node',
+      'g.react-flow__node',
+      '[likec4_id]',
+      '[data-likec4-id]',
+      '[likec4-id]',
+      '[data-testid^="rf__node-"]'
+    ];
+    const candidates = candidateSelectors.flatMap((selector) =>
+      Array.from(svg.querySelectorAll(selector))
+    );
+    if (candidates.length) {
+      logExport('likec4 svg node candidates', {
+        count: candidates.length,
+        selectors: candidateSelectors
+      });
+    }
+
+    if (!nodeTitle && !nodeId) return;
+    const textMatches = Array.from(svg.querySelectorAll('text'))
+      .map((text) => ({
+        text,
+        value: text.textContent?.trim() ?? ''
+      }))
+      .filter(({ value }) => value && (value === nodeTitle || value.includes(nodeTitle ?? '')))
+      .slice(0, 3);
+    if (textMatches.length) {
+      logExport(
+        'likec4 svg text matches',
+        textMatches.map(({ text, value }) => ({
+          value,
+          parent: describeSvgNode(text.closest('g') ?? text.parentElement ?? text),
+          bbox: getSvgElementBBox(text.closest('g') ?? text)
+        }))
+      );
+    }
+
+    const idMatches = nodeId
+      ? candidates.filter((node) => {
+          const likec4Id =
+            node.getAttribute('likec4_id') ??
+            node.getAttribute('data-likec4-id') ??
+            node.getAttribute('likec4-id');
+          const title = node.querySelector('title')?.textContent?.trim();
+          return likec4Id === nodeId || title === nodeId;
+        })
+      : [];
+    if (idMatches.length) {
+      logExport(
+        'likec4 svg id matches',
+        idMatches.slice(0, 3).map((node) => ({
+          node: describeSvgNode(node),
+          bbox: getSvgElementBBox(node)
+        }))
+      );
+    } else {
+      logExport('likec4 svg node match not found', { nodeId, nodeTitle, vb });
+    }
+  };
+
   const injectLikec4Icons = (svg: SVGSVGElement, icons: LikeC4IconSnapshot[]): void => {
     const likec4El = document.querySelector('likec4-viewer') as HTMLElement | null;
     if (!likec4El) return;
@@ -371,12 +597,37 @@
     const viewBoxParts = viewBox?.split(/\s+/).map(Number) ?? [];
     const viewBoxX = viewBoxParts.length === 4 ? viewBoxParts[0] : 0;
     const viewBoxY = viewBoxParts.length === 4 ? viewBoxParts[1] : 0;
+    const viewBoxW = viewBoxParts.length === 4 ? viewBoxParts[2] : undefined;
+    const viewBoxH = viewBoxParts.length === 4 ? viewBoxParts[3] : undefined;
+    const measuredSvg = svg.cloneNode(true) as SVGSVGElement;
+    if (viewBoxW && viewBoxH) {
+      measuredSvg.setAttribute('width', `${viewBoxW}`);
+      measuredSvg.setAttribute('height', `${viewBoxH}`);
+    }
+    measuredSvg.style.position = 'fixed';
+    measuredSvg.style.left = '-10000px';
+    measuredSvg.style.top = '-10000px';
+    measuredSvg.style.visibility = 'hidden';
+    measuredSvg.style.pointerEvents = 'none';
+    document.body.append(measuredSvg);
 
     const roots = collectRoots(likec4El);
     const viewport =
       roots.map((root) => root.querySelector<HTMLElement>('.react-flow__viewport')).find(Boolean) ??
       null;
     const viewportRect = viewport?.getBoundingClientRect();
+    logExport('likec4 viewport rect', viewportRect ? {
+      x: Math.round(viewportRect.left),
+      y: Math.round(viewportRect.top),
+      width: Math.round(viewportRect.width),
+      height: Math.round(viewportRect.height)
+    } : null);
+    logExport('likec4 host rect', {
+      x: Math.round(hostRect.left),
+      y: Math.round(hostRect.top),
+      width: Math.round(hostRect.width),
+      height: Math.round(hostRect.height)
+    });
     const transform = viewport ? getComputedStyle(viewport).transform : 'none';
     let scale = 1;
     let translateX = 0;
@@ -404,6 +655,104 @@
     }
     logExport('likec4 viewport transform', { scale, translateX, translateY });
 
+    const liveSvg = likec4El.shadowRoot?.querySelector('svg') as SVGSVGElement | null;
+    const liveRect = liveSvg?.getBoundingClientRect();
+    const liveViewBox = liveSvg?.getAttribute('viewBox') ?? '';
+    const liveViewBoxParts = liveViewBox.split(/\s+/).map(Number);
+    const liveVB =
+      liveViewBoxParts.length === 4 && liveViewBoxParts.every((n) => Number.isFinite(n))
+        ? {
+            x: liveViewBoxParts[0],
+            y: liveViewBoxParts[1],
+            width: liveViewBoxParts[2],
+            height: liveViewBoxParts[3]
+          }
+        : undefined;
+    if (liveRect && liveVB) {
+      logExport('likec4 live svg metrics', {
+        rect: {
+          x: Math.round(liveRect.left),
+          y: Math.round(liveRect.top),
+          width: Math.round(liveRect.width),
+          height: Math.round(liveRect.height)
+        },
+        viewBox: liveVB
+      });
+    }
+
+    const mapViaLiveSvg = (icon: LikeC4IconSnapshot) => {
+      if (!liveRect || !liveVB || !viewBoxW || !viewBoxH) return null;
+      if (!liveRect.width || !liveRect.height) return null;
+      const screenX = hostRect.left + icon.x;
+      const screenY = hostRect.top + icon.y;
+      const liveScaleX = liveVB.width / liveRect.width;
+      const liveScaleY = liveVB.height / liveRect.height;
+      const liveX = (screenX - liveRect.left) * liveScaleX + liveVB.x;
+      const liveY = (screenY - liveRect.top) * liveScaleY + liveVB.y;
+      const liveW = icon.width * liveScaleX;
+      const liveH = icon.height * liveScaleY;
+      const exportScaleX = viewBoxW / liveVB.width;
+      const exportScaleY = viewBoxH / liveVB.height;
+      return {
+        x: (liveX - liveVB.x) * exportScaleX + viewBoxX,
+        y: (liveY - liveVB.y) * exportScaleY + viewBoxY,
+        width: liveW * exportScaleX,
+        height: liveH * exportScaleY
+      };
+    };
+
+    const mapViaViewportToSvg = (icon: LikeC4IconSnapshot) => {
+      if (!viewportRect || !viewBoxW || !viewBoxH) return null;
+      if (!viewportRect.width || !viewportRect.height) return null;
+      const screenX = hostRect.left + icon.x;
+      const screenY = hostRect.top + icon.y;
+      const viewportX = (screenX - viewportRect.left - translateX) / scale;
+      const viewportY = (screenY - viewportRect.top - translateY) / scale;
+      const scaleX = viewBoxW / viewportRect.width;
+      const scaleY = viewBoxH / viewportRect.height;
+      return {
+        x: viewportX * scaleX + viewBoxX,
+        y: viewportY * scaleY + viewBoxY,
+        width: (icon.width / scale) * scaleX,
+        height: (icon.height / scale) * scaleY
+      };
+    };
+
+    const mapNodeRectViaViewportToSvg = (icon: LikeC4IconSnapshot) => {
+      if (
+        icon.nodeX === undefined ||
+        icon.nodeY === undefined ||
+        icon.nodeWidth === undefined ||
+        icon.nodeHeight === undefined
+      ) {
+        return null;
+      }
+      if (!viewportRect || !viewBoxW || !viewBoxH) return null;
+      if (!viewportRect.width || !viewportRect.height) return null;
+      const screenX = hostRect.left + icon.nodeX;
+      const screenY = hostRect.top + icon.nodeY;
+      const viewportX = (screenX - viewportRect.left - translateX) / scale;
+      const viewportY = (screenY - viewportRect.top - translateY) / scale;
+      const scaleX = viewBoxW / viewportRect.width;
+      const scaleY = viewBoxH / viewportRect.height;
+      return {
+        x: viewportX * scaleX + viewBoxX,
+        y: viewportY * scaleY + viewBoxY,
+        width: (icon.nodeWidth / scale) * scaleX,
+        height: (icon.nodeHeight / scale) * scaleY
+      };
+    };
+
+    const isPlacementInView = (x: number, y: number, width: number, height: number) => {
+      if (!Number.isFinite(x + y + width + height)) return false;
+      if (viewBoxW === undefined || viewBoxH === undefined) return true;
+      const minX = viewBoxX - 1;
+      const minY = viewBoxY - 1;
+      const maxX = viewBoxX + viewBoxW + 1;
+      const maxY = viewBoxY + viewBoxH + 1;
+      return x + width >= minX && y + height >= minY && x <= maxX && y <= maxY;
+    };
+
     icons.forEach((icon, index) => {
       const clone = icon.svg.cloneNode(true) as SVGSVGElement;
       prefixSvgIds(clone, `likec4-icon-${index}-`);
@@ -416,13 +765,96 @@
       let width = icon.width;
       let height = icon.height;
       let usedNodeMapping = false;
+      let usedMeasuredMapping = false;
+      logExport('likec4 icon placement', {
+        index,
+        nodeId: icon.nodeId,
+        nodeTitle: icon.nodeTitle,
+        relX: icon.relX,
+        relY: icon.relY,
+        relW: icon.relW,
+        relH: icon.relH
+      });
+      logSvgDiagnostics(svg, icon.nodeTitle, icon.nodeId);
       const nodeId = icon.nodeId;
-      if (
-        nodeId &&
+      const nodeTitle = icon.nodeTitle;
+      const relReady =
         icon.relX !== undefined &&
         icon.relY !== undefined &&
         icon.relW !== undefined &&
-        icon.relH !== undefined
+        icon.relH !== undefined;
+
+      const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+      if (relReady && nodeTitle) {
+        const measuredText = Array.from(measuredSvg.querySelectorAll<SVGTextElement>('text')).find((text) => {
+          const value = text.textContent?.trim();
+          return value === nodeTitle || value?.includes(nodeTitle);
+        });
+        const measuredNode =
+          (measuredText?.closest('g.node') as SVGGElement | null) ??
+          (measuredText?.closest('g') as SVGGElement | null);
+        if (measuredNode) {
+          try {
+            const bbox = measuredNode.getBBox();
+            if (bbox && bbox.width > 1 && bbox.height > 1) {
+              const padding = Math.min(bbox.width, bbox.height) * 0.08;
+              const innerW = Math.max(1, bbox.width - padding * 2);
+              const innerH = Math.max(1, bbox.height - padding * 2);
+              const relW = clamp(icon.relW!, 0.1, 1);
+              const relH = clamp(icon.relH!, 0.1, 1);
+              width = Math.min(innerW, relW * bbox.width);
+              height = Math.min(innerH, relH * bbox.height);
+              const relX = clamp(icon.relX!, 0, 1);
+              const relY = clamp(icon.relY!, 0, 1);
+              x = bbox.x + padding + relX * Math.max(0, innerW - width);
+              y = bbox.y + padding + relY * Math.max(0, innerH - height);
+              usedNodeMapping = true;
+              usedMeasuredMapping = true;
+              logExport('likec4 icon placement using measured svg node', {
+                bbox,
+                padding,
+                relX: icon.relX,
+                relY: icon.relY,
+                relW: icon.relW,
+                relH: icon.relH,
+                matchedText: measuredText?.textContent?.trim() ?? null
+              });
+            }
+          } catch {
+            // fallback to other mappings below
+          }
+        }
+      }
+      if (relReady && !usedNodeMapping) {
+        const mappedNode = mapNodeRectViaViewportToSvg(icon);
+        if (mappedNode && mappedNode.width > 1 && mappedNode.height > 1) {
+          const relW = clamp(icon.relW!, 0, 1);
+          const relH = clamp(icon.relH!, 0, 1);
+          const relX = clamp(icon.relX!, 0, Math.max(0, 1 - relW));
+          const relY = clamp(icon.relY!, 0, Math.max(0, 1 - relH));
+          x = mappedNode.x + relX * mappedNode.width;
+          y = mappedNode.y + relY * mappedNode.height;
+          width = Math.max(1, relW * mappedNode.width);
+          height = Math.max(1, relH * mappedNode.height);
+          usedNodeMapping = true;
+          logExport('likec4 icon placement using mapped node rect', {
+            mappedNode,
+            relX: icon.relX,
+            relY: icon.relY,
+            relW: icon.relW,
+            relH: icon.relH,
+            clampedRelX: relX,
+            clampedRelY: relY,
+            clampedRelW: relW,
+            clampedRelH: relH
+          });
+        }
+      }
+
+      if (
+        !usedNodeMapping &&
+        nodeId &&
+        relReady
       ) {
         const nodeEl =
           svg.querySelector(`[likec4_id="${nodeId}"]`) ??
@@ -430,12 +862,34 @@
           svg.querySelector(`[likec4-id="${nodeId}"]`);
         if (nodeEl && 'getBBox' in nodeEl) {
           try {
-            const bbox = (nodeEl as SVGGraphicsElement).getBBox();
-            x = bbox.x + icon.relX * bbox.width;
-            y = bbox.y + icon.relY * bbox.height;
-            width = icon.relW * bbox.width;
-            height = icon.relH * bbox.height;
-            usedNodeMapping = true;
+            const bbox =
+              getSvgNodeBBox(nodeEl) ?? (nodeEl as SVGGraphicsElement).getBBox();
+            if (bbox && bbox.width > 1 && bbox.height > 1) {
+              const mappedWidth = icon.relW * bbox.width;
+              const mappedHeight = icon.relH * bbox.height;
+              const isValid =
+                Number.isFinite(mappedWidth) &&
+                Number.isFinite(mappedHeight) &&
+                mappedWidth > 1 &&
+                mappedHeight > 1;
+              if (isValid) {
+                x = bbox.x + icon.relX * bbox.width;
+                y = bbox.y + icon.relY * bbox.height;
+                width = mappedWidth;
+                height = mappedHeight;
+                usedNodeMapping = true;
+              }
+              logExport('likec4 svg node bbox (id)', nodeId, {
+                bbox,
+                relX: icon.relX,
+                relY: icon.relY,
+                relW: icon.relW,
+                relH: icon.relH,
+                mappedWidth,
+                mappedHeight,
+                usedNodeMapping
+              });
+            }
           } catch {
             // fallback to viewport mapping below
           }
@@ -443,13 +897,163 @@
           logExport('likec4 svg node not found for icon', nodeId);
         }
       }
+      if (!usedNodeMapping && nodeId) {
+        const titleMatches = Array.from(svg.querySelectorAll('g.node > title')).find(
+          (title) => title.textContent?.trim() === nodeId
+        );
+        const titleNode = titleMatches?.parentElement as SVGGraphicsElement | null;
+        if (titleNode) {
+          try {
+            const bbox = getSvgNodeBBox(titleNode) ?? titleNode.getBBox();
+            if (
+              icon.relX !== undefined &&
+              icon.relY !== undefined &&
+              icon.relW !== undefined &&
+              icon.relH !== undefined &&
+              bbox &&
+              bbox.width > 1 &&
+              bbox.height > 1
+            ) {
+              const mappedWidth = icon.relW * bbox.width;
+              const mappedHeight = icon.relH * bbox.height;
+              const isValid =
+                Number.isFinite(mappedWidth) &&
+                Number.isFinite(mappedHeight) &&
+                mappedWidth > 1 &&
+                mappedHeight > 1;
+              if (isValid) {
+                x = bbox.x + icon.relX * bbox.width;
+                y = bbox.y + icon.relY * bbox.height;
+                width = mappedWidth;
+                height = mappedHeight;
+                usedNodeMapping = true;
+              }
+              logExport('likec4 svg node bbox (title)', nodeTitle, {
+                bbox,
+                relX: icon.relX,
+                relY: icon.relY,
+                relW: icon.relW,
+                relH: icon.relH,
+                mappedWidth,
+                mappedHeight,
+                usedNodeMapping
+              });
+            }
+          } catch {
+            // fallback to viewport mapping below
+          }
+        }
+      }
+      if (!usedNodeMapping && nodeTitle) {
+        const nodes = Array.from(svg.querySelectorAll<SVGGElement>('g.node'));
+        const match = nodes.find((node) =>
+          Array.from(node.querySelectorAll('text')).some((text) => {
+            const value = text.textContent?.trim();
+            return value === nodeTitle || value?.includes(nodeTitle);
+          })
+        );
+        if (match) {
+          try {
+            const bbox = getSvgNodeBBox(match) ?? match.getBBox();
+            if (
+              icon.relX !== undefined &&
+              icon.relY !== undefined &&
+              icon.relW !== undefined &&
+              icon.relH !== undefined &&
+              bbox &&
+              bbox.width > 1 &&
+              bbox.height > 1
+            ) {
+              const mappedWidth = icon.relW * bbox.width;
+              const mappedHeight = icon.relH * bbox.height;
+              const isValid =
+                Number.isFinite(mappedWidth) &&
+                Number.isFinite(mappedHeight) &&
+                mappedWidth > 1 &&
+                mappedHeight > 1;
+              if (isValid) {
+                x = bbox.x + icon.relX * bbox.width;
+                y = bbox.y + icon.relY * bbox.height;
+                width = mappedWidth;
+                height = mappedHeight;
+                usedNodeMapping = true;
+              }
+              logExport('likec4 svg node bbox (text)', nodeTitle, {
+                bbox,
+                relX: icon.relX,
+                relY: icon.relY,
+                relW: icon.relW,
+                relH: icon.relH,
+                mappedWidth,
+                mappedHeight,
+                usedNodeMapping
+              });
+            }
+          } catch {
+            // fallback to viewport mapping below
+          }
+        }
+      }
+      if (!usedNodeMapping && nodeTitle) {
+        const textEl = Array.from(svg.querySelectorAll<SVGTextElement>('text')).find((text) => {
+          const value = text.textContent?.trim();
+          return value === nodeTitle || value?.includes(nodeTitle);
+        });
+        const group = textEl?.closest('g') as SVGGraphicsElement | null;
+        if (group) {
+          try {
+            const bbox = getSvgNodeBBox(group) ?? group.getBBox();
+            if (
+              icon.relX !== undefined &&
+              icon.relY !== undefined &&
+              icon.relW !== undefined &&
+              icon.relH !== undefined &&
+              bbox &&
+              bbox.width > 1 &&
+              bbox.height > 1
+            ) {
+              const mappedWidth = icon.relW * bbox.width;
+              const mappedHeight = icon.relH * bbox.height;
+              const isValid =
+                Number.isFinite(mappedWidth) &&
+                Number.isFinite(mappedHeight) &&
+                mappedWidth > 1 &&
+                mappedHeight > 1;
+              if (isValid) {
+                x = bbox.x + icon.relX * bbox.width;
+                y = bbox.y + icon.relY * bbox.height;
+                width = mappedWidth;
+                height = mappedHeight;
+                usedNodeMapping = true;
+              }
+              logExport('likec4 svg node bbox (text-any)', nodeTitle, {
+                bbox,
+                relX: icon.relX,
+                relY: icon.relY,
+                relW: icon.relW,
+                relH: icon.relH,
+                mappedWidth,
+                mappedHeight,
+                usedNodeMapping
+              });
+            }
+          } catch {
+            // fallback to viewport mapping below
+          }
+        }
+        if (!usedNodeMapping) {
+          logExport('likec4 svg node not found for icon title', nodeTitle);
+        }
+      }
       if (!usedNodeMapping && viewport && viewportRect) {
-        const screenX = hostRect.left + icon.x;
-        const screenY = hostRect.top + icon.y;
-        x = (screenX - viewportRect.left - translateX) / scale;
-        y = (screenY - viewportRect.top - translateY) / scale;
-        width = icon.width / scale;
-        height = icon.height / scale;
+        const mapped = mapViaViewportToSvg(icon);
+        if (mapped) {
+          x = mapped.x;
+          y = mapped.y;
+          width = mapped.width;
+          height = mapped.height;
+          logExport('likec4 icon placement using viewport->svg mapping', mapped);
+        }
       } else if (!usedNodeMapping) {
         const { width: svgWidth, height: svgHeight } = getSvgSize(svg);
         const scaleX = svgWidth / hostWidth;
@@ -459,6 +1063,36 @@
         width = icon.width * scaleX;
         height = icon.height * scaleY;
       }
+      if (usedNodeMapping && !usedMeasuredMapping && !isPlacementInView(x, y, width, height)) {
+        const mappedLive = mapViaLiveSvg(icon);
+        const mappedViewport = mapViaViewportToSvg(icon);
+        if (mappedLive) {
+          logExport('likec4 icon placement out of view, using live svg mapping', mappedLive);
+          x = mappedLive.x;
+          y = mappedLive.y;
+          width = mappedLive.width;
+          height = mappedLive.height;
+          usedNodeMapping = false;
+        } else if (mappedViewport) {
+          logExport('likec4 icon placement out of view, using viewport->svg mapping', mappedViewport);
+          x = mappedViewport.x;
+          y = mappedViewport.y;
+          width = mappedViewport.width;
+          height = mappedViewport.height;
+          usedNodeMapping = false;
+        } else {
+          logExport('likec4 icon placement out of view, keeping node mapping', { x, y, width, height });
+        }
+      }
+      if (usedMeasuredMapping && viewBoxW !== undefined && viewBoxH !== undefined) {
+        const minX = viewBoxX;
+        const minY = viewBoxY;
+        const maxX = viewBoxX + viewBoxW - width;
+        const maxY = viewBoxY + viewBoxH - height;
+        x = clamp(x, minX, maxX);
+        y = clamp(y, minY, maxY);
+      }
+      logExport('likec4 icon final placement', { x, y, width, height, usedNodeMapping });
       clone.setAttribute('x', `${usedNodeMapping ? x : x + viewBoxX}`);
       clone.setAttribute('y', `${usedNodeMapping ? y : y + viewBoxY}`);
       clone.setAttribute('width', `${width}`);
@@ -467,17 +1101,12 @@
       clone.removeAttribute('class');
       svg.append(clone);
     });
+    measuredSvg.remove();
   };
 
   const fetchLikec4VectorSvg = async (): Promise<SVGSVGElement | undefined> => {
-    const svgEl = (await fetchLikec4Svg()) as SVGSVGElement | undefined;
-    if (!svgEl) return undefined;
-    const icons = await collectLikec4Icons();
-    if (icons.length) {
-      logExport('likec4 icons found', icons.length);
-      injectLikec4Icons(svgEl, icons);
-    }
-    return svgEl;
+    // Server now inlines icons into the SVG; return it as-is to avoid client-side remapping.
+    return (await fetchLikec4Svg()) as SVGSVGElement | undefined;
   };
 
   const getSvgElement = async (): Promise<HTMLElement | undefined> => {
@@ -539,6 +1168,26 @@
       return mermaidSvg;
     }
     return undefined;
+  };
+
+  const getPngSvgElement = async (): Promise<HTMLElement | undefined> => {
+    if (currentLanguage === 'likec4') {
+      const fetched = await fetchLikec4VectorSvg();
+      if (fetched) {
+        logExport('png using fetched svg');
+        fetched.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+        fetched.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        return fetched;
+      }
+    } else if (currentLanguage === 'mermaid') {
+      const rendered = await renderMermaidPngSvg();
+      if (rendered) {
+        logExport('png using mermaid render');
+        rendered.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        return rendered as unknown as HTMLElement;
+      }
+    }
+    return getSvgElement();
   };
 
   const buildSvgString = async (
@@ -609,16 +1258,25 @@ ${svgString}`;
     return { width: 1200, height: 800 };
   };
 
+  const getSvgObjectUrl = async (svg?: HTMLElement, width?: number, height?: number): Promise<string> => {
+    const svgString = await buildSvgString(svg, width, height);
+    console.log('[export-png] svg string length', svgString.length);
+    const blob = new Blob([svgString], { type: 'image/svg+xml' });
+    console.log('[export-png] svg blob size', blob.size);
+    return URL.createObjectURL(blob);
+  };
+
   const rasterizeSvgToSvgImage = async (svg: SVGElement): Promise<string> => {
     const { width, height } = getSvgSize(svg);
-    const svgString = await buildSvgString(svg, width, height);
     const image = new Image();
     const loadPromise = new Promise<void>((resolve, reject) => {
       image.onload = () => resolve();
       image.onerror = () => reject(new Error('Failed to load SVG image'));
     });
-    image.src = `data:image/svg+xml;base64,${toBase64(svgString)}`;
+    const objectUrl = await getSvgObjectUrl(svg as unknown as HTMLElement, width, height);
+    image.src = objectUrl;
     await loadPromise;
+    URL.revokeObjectURL(objectUrl);
 
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(width));
@@ -646,9 +1304,6 @@ ${svgString}`;
     return buildSvgString(rasterSvg);
   };
 
-  const getBase64SVG = async (svg?: HTMLElement, width?: number, height?: number): Promise<string> =>
-    toBase64(await buildSvgString(svg, width, height));
-
   const simulateDownload = (download: string, href: string): void => {
     const a = document.createElement('a');
     a.download = download;
@@ -657,30 +1312,33 @@ ${svgString}`;
     a.remove();
   };
 
-  const exportImage = async (event: Event, exporter: Exporter) => {
+  const exportImage = async (event: Event, exporter: Exporter, preferVectorSvg = false) => {
     $inputStateStore.panZoom = false;
     await new Promise((resolve) => setTimeout(resolve, 1000));
     await waitForRender();
     const canvas = document.createElement('canvas');
-    const svg = await getSvgElement();
+    const svg = preferVectorSvg ? await getPngSvgElement() : await getSvgElement();
     if (!svg) {
       throw new Error('svg not found');
     }
 
     const box = svg.getBoundingClientRect();
+    const svgSize = getSvgSize(svg);
+    const baseWidth = box.width > 0 ? box.width : svgSize.width;
+    const baseHeight = box.height > 0 ? box.height : svgSize.height;
 
     if (imageSizeMode === 'width') {
-      const ratio = box.height / box.width;
+      const ratio = baseHeight / baseWidth;
       canvas.width = imageSize;
       canvas.height = imageSize * ratio;
     } else if (imageSizeMode === 'height') {
-      const ratio = box.width / box.height;
+      const ratio = baseWidth / baseHeight;
       canvas.width = imageSize * ratio;
       canvas.height = imageSize;
     } else {
       const multiplier = 2;
-      canvas.width = box.width * multiplier;
-      canvas.height = box.height * multiplier;
+      canvas.width = baseWidth * multiplier;
+      canvas.height = baseHeight * multiplier;
     }
 
     const context = canvas.getContext('2d');
@@ -692,11 +1350,24 @@ ${svgString}`;
     context.fillRect(0, 0, canvas.width, canvas.height);
 
     const image = new Image();
+    let objectUrl: string | null = null;
     image.addEventListener('load', () => {
+      console.log('[export-png] image loaded', {
+        width: image.naturalWidth,
+        height: image.naturalHeight
+      });
       exporter(context, image)();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
       $inputStateStore.panZoom = true;
     });
-    image.src = `data:image/svg+xml;base64,${await getBase64SVG(svg, canvas.width, canvas.height)}`;
+    image.addEventListener('error', (event) => {
+      console.error('[export-png] image load error', event);
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    });
+    objectUrl = await getSvgObjectUrl(svg, canvas.width, canvas.height);
+    console.log('[export-png] canvas size', { width: canvas.width, height: canvas.height });
+    console.log('[export-png] object url', objectUrl);
+    image.src = objectUrl;
     // Fallback to set panZoom to true after 2 seconds
     // This is a workaround for the case when the image is not loaded
     setTimeout(() => {
@@ -712,9 +1383,22 @@ ${svgString}`;
     return () => {
       const { canvas } = context;
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      simulateDownload(
-        getFileName('png'),
-        canvas.toDataURL('image/png').replace('image/png', 'image/octet-stream')
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            console.error('[export-png] png blob is empty', {
+              canvasWidth: canvas.width,
+              canvasHeight: canvas.height
+            });
+            return;
+          }
+          console.log('[export-png] png blob size', blob.size);
+          const url = URL.createObjectURL(blob);
+          simulateDownload(getFileName('png'), url);
+          setTimeout(() => URL.revokeObjectURL(url), 0);
+        },
+        'image/png',
+        1
       );
     };
   };
@@ -745,12 +1429,12 @@ ${svgString}`;
   };
 
   const onCopyClipboard = async (event: Event) => {
-    await exportImage(event, clipboardCopy);
+    await exportImage(event, clipboardCopy, true);
     logEvent('copyClipboard');
   };
 
   const onDownloadPNG = async (event: Event) => {
-    await exportImage(event, downloadImage);
+    await exportImage(event, downloadImage, true);
     logEvent('download', {
       type: 'png'
     });
