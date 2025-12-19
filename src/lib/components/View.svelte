@@ -139,6 +139,9 @@
           // likec4/react expects a named background theme, not an arbitrary hex.
           // Avoid ReactFlow auto-fit zoom; show at native scale.
           (viewer as unknown as { fitView: boolean }).fitView = false;
+          (viewer as unknown as { setView?: (viewId: string | null) => void }).setView?.(
+            selectedViewId ?? null
+          );
 
           if (!container?.contains(viewer)) {
             // eslint-disable-next-line svelte/no-dom-manipulating

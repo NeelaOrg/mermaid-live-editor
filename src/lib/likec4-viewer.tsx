@@ -141,6 +141,11 @@ class LikeC4ViewerElement extends HTMLElement {
     this.render();
   }
 
+  setView(viewId: string | null): void {
+    this.#viewId = viewId;
+    this.render();
+  }
+
   render(): void {
     if (typeof window === 'undefined') return;
     if (!this.shadowRoot) {
@@ -224,4 +229,18 @@ class LikeC4ViewerElement extends HTMLElement {
 
 if (typeof window !== 'undefined' && !customElements.get('likec4-viewer')) {
   customElements.define('likec4-viewer', LikeC4ViewerElement);
+  const warnedRefKey = '__likec4_ref_warned__';
+  const origError = console.error;
+  console.error = (...args: unknown[]) => {
+    const first = args[0];
+    if (
+      typeof first === 'string' &&
+      first.includes('Function components cannot be given refs') &&
+      !(window as any)[warnedRefKey]
+    ) {
+      (window as any)[warnedRefKey] = true;
+      return;
+    }
+    return origError(...args);
+  };
 }
