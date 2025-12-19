@@ -27,16 +27,70 @@
   const getFileName = (extension: string) =>
     `mermaid-diagram-${dayjs().format('YYYY-MM-DD-HHmmss')}.${extension}`;
 
-  const getSvgElement = () => {
-    const svgElement = document.querySelector('#container svg')?.cloneNode(true) as HTMLElement;
-    svgElement.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
-    return svgElement;
+  let currentLanguage = 'mermaid';
+  let currentCode = '';
+  stateStore.subscribe(({ language, code }) => {
+    currentLanguage = language ?? 'mermaid';
+    currentCode = code;
+  });
+
+  const currentViewId = () =>
+    (document.getElementById('view-select') as HTMLSelectElement | null)?.value ?? undefined;
+
+  const fetchLikec4Svg = async (): Promise<HTMLElement | undefined> => {
+    try {
+      const res = await fetch('/api/likec4/render', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ code: currentCode, viewId: currentViewId() })
+      });
+      const data = await res.json();
+      const svgText = typeof data?.svg === 'string' ? data.svg.trim() : '';
+      if (!svgText) return undefined;
+      const tpl = document.createElement('template');
+      tpl.innerHTML = svgText;
+      return tpl.content.querySelector('svg') ?? undefined;
+    } catch (error) {
+      console.error('LikeC4 export failed', error);
+      return undefined;
+    }
   };
 
-  const getBase64SVG = (svg?: HTMLElement, width?: number, height?: number): string => {
+  const getSvgElement = async (): Promise<HTMLElement | undefined> => {
+    const likec4Svg = document
+      .querySelector('likec4-viewer')
+      ?.shadowRoot?.querySelector('svg')
+      ?.cloneNode(true) as HTMLElement | undefined;
+    const mermaidSvg = document
+      .querySelector('#container svg')
+      ?.cloneNode(true) as HTMLElement | undefined;
+    const svgElement = likec4Svg ?? mermaidSvg;
+    if (svgElement) {
+      svgElement.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+      return svgElement;
+    }
+    if (currentLanguage === 'likec4') {
+      const fetched = await fetchLikec4Svg();
+      if (fetched) {
+        fetched.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+        return fetched;
+      }
+    }
+    return undefined;
+  };
+
+  const buildSvgString = async (
+    svg?: HTMLElement,
+    width?: number,
+    height?: number
+  ): Promise<string> => {
     if (svg) {
-      // Prevents the SVG size of the interface from being changed
       svg = svg.cloneNode(true) as HTMLElement;
+    } else {
+      svg = await getSvgElement();
+    }
+    if (!svg) {
+      throw new Error('svg not found');
     }
     if (height) {
       svg?.setAttribute('height', `${height}px`);
@@ -45,21 +99,19 @@
       svg?.setAttribute('width', `${width}px`);
     }
     // Workaround https://stackoverflow.com/questions/28690643/firefox-error-rendering-an-svg-image-to-html5-canvas-with-drawimage
-
-    if (!svg) {
-      svg = getSvgElement();
-    }
-
     svg.style.backgroundColor = window.getComputedStyle(document.body).getPropertyValue('--background');
 
     const svgString = svg.outerHTML
       .replaceAll('<br>', '<br/>')
       .replaceAll(/<img([^>]*)>/g, (m, g: string) => `<img ${g} />`);
 
-    return toBase64(`<?xml version="1.0" encoding="UTF-8"?>
+    return `<?xml version="1.0" encoding="UTF-8"?>
 <?xml-stylesheet href="${FONT_AWESOME_URL}" type="text/css"?>
-${svgString}`);
+${svgString}`;
   };
+
+  const getBase64SVG = async (svg?: HTMLElement, width?: number, height?: number): Promise<string> =>
+    toBase64(await buildSvgString(svg, width, height));
 
   const simulateDownload = (download: string, href: string): void => {
     const a = document.createElement('a');
@@ -74,7 +126,7 @@ ${svgString}`);
     await new Promise((resolve) => setTimeout(resolve, 1000));
     await waitForRender();
     const canvas = document.createElement('canvas');
-    const svg = document.querySelector<HTMLElement>('#container svg');
+    const svg = await getSvgElement();
     if (!svg) {
       throw new Error('svg not found');
     }
@@ -108,7 +160,7 @@ ${svgString}`);
       exporter(context, image)();
       $inputStateStore.panZoom = true;
     });
-    image.src = `data:image/svg+xml;base64,${getBase64SVG(svg, canvas.width, canvas.height)}`;
+    image.src = `data:image/svg+xml;base64,${await getBase64SVG(svg, canvas.width, canvas.height)}`;
     // Fallback to set panZoom to true after 2 seconds
     // This is a workaround for the case when the image is not loaded
     setTimeout(() => {
@@ -168,8 +220,12 @@ ${svgString}`);
     });
   };
 
-  const onDownloadSVG = () => {
-    simulateDownload(getFileName('svg'), `data:image/svg+xml;base64,${getBase64SVG()}`);
+  const onDownloadSVG = async () => {
+    const svgText = await buildSvgString();
+    const blob = new Blob([svgText], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    simulateDownload(getFileName('svg'), url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     logEvent('download', {
       type: 'svg'
     });

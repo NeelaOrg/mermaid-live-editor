@@ -89,8 +89,8 @@ export const POST = async ({ request }) => {
 
     return json({
       status: 'success',
-      svg: selected.svg,
       viewId: selected.id,
+      svg: selected.svg,
       views: views.map((v) => ({
         id: v.id,
         title: v.title ?? v.name ?? v.id

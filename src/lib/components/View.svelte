@@ -6,6 +6,7 @@
   import { inputStateStore, stateStore, updateCodeStore } from '$/util/state';
   import { logEvent, saveStatistics } from '$/util/stats';
   import FontAwesome, { mayContainFontAwesome } from '$lib/components/FontAwesome.svelte';
+  import '$lib/likec4-viewer';
   import uniqueID from 'lodash-es/uniqueId';
   import type { MermaidConfig } from 'mermaid';
   import { mode } from 'mode-watcher';
@@ -23,6 +24,7 @@
   let view: HTMLDivElement | undefined = $state();
   let error = $state(false);
   let availableViews: Array<{ id: string; title: string }> = $state([]);
+  let currentLikec4View: Record<string, unknown> | undefined = $state();
   let selectedViewId: string | undefined = $state();
   let currentLanguage: string | undefined = $state('mermaid');
   let panZoom = true;
@@ -81,94 +83,68 @@
         const scroll = view?.parentElement?.scrollTop;
         delete container.dataset.processed;
         if ((state.language ?? 'mermaid') === 'likec4') {
-          const res = await fetch('/api/likec4/render', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ code: state.code, viewId: selectedViewId })
-          });
-          const data = (await res.json().catch(() => null)) as
-            | {
-                status: 'success';
-                svg: string;
-                viewId: string;
-                views?: Array<{ id: string; title: string }>;
-              }
-            | {
-                status: 'fail';
-                error: { message: string; details?: unknown };
-              }
-            | null;
+          diagramType = 'likec4';
+          const viewer =
+            container?.querySelector<HTMLElement>('likec4-viewer') ??
+            document.createElement('likec4-viewer');
+          viewer.style.display = 'block';
+          viewer.style.width = '100%';
+          viewer.style.height = '100%';
 
-          if (!data) {
-            throw new Error('Invalid response from LikeC4 renderer.');
-          }
-          if (data.status !== 'success') {
+          const handleReady = (event: Event) => {
+            const detail = (event as CustomEvent).detail as
+              | { views: Array<{ id: string; title: string }>; viewId: string }
+              | undefined;
+            if (!detail) return;
+            availableViews = detail.views ?? [];
+            const hasSelected =
+              selectedViewId && availableViews.some((v) => v.id === selectedViewId);
+            if (!hasSelected) {
+              selectedViewId = detail.viewId ?? availableViews[0]?.id;
+            }
+          };
+
+          const handleError = (event: Event) => {
+            const message =
+              ((event as CustomEvent).detail as { message?: string } | undefined)?.message ??
+              'LikeC4 render failed.';
             // eslint-disable-next-line svelte/no-dom-manipulating
             container.innerHTML = '';
             const pre = document.createElement('pre');
             pre.style.padding = '12px';
             pre.style.whiteSpace = 'pre-wrap';
-            const details = data.error?.details;
-            if (Array.isArray(details) && details.length) {
-              const lines = details
-                .slice(0, 50)
-                .map((d) => {
-                  const startLine = (d as { startLine?: unknown }).startLine;
-                  const startColumn = (d as { startColumn?: unknown }).startColumn;
-                  const message = (d as { message?: unknown }).message;
-                  const line = typeof startLine === 'number' ? startLine : '?';
-                  const col = typeof startColumn === 'number' ? `:${startColumn + 1}` : '';
-                  return `line ${line}${col}: ${typeof message === 'string' ? message : ''}`;
-                })
-                .join('\n');
-              pre.textContent = `${data.error?.message ?? 'LikeC4 render failed.'}\n\n${lines}`;
-            } else {
-              pre.textContent = data.error?.message ?? 'LikeC4 render failed.';
-            }
+            pre.textContent = message;
             // eslint-disable-next-line svelte/no-dom-manipulating
             container.append(pre);
             error = true;
-            return;
-          }
+          };
 
-          availableViews = data.views ?? [];
-          const hasSelected =
-            selectedViewId && availableViews.some((v) => v.id === selectedViewId);
-          if (!hasSelected) {
-            selectedViewId = data.viewId ?? availableViews[0]?.id;
+          const anyViewer = viewer as unknown as {
+            __readyHandler?: (event: Event) => void;
+            __errorHandler?: (event: Event) => void;
+          };
+          if (anyViewer.__readyHandler) {
+            viewer.removeEventListener('likec4ready', anyViewer.__readyHandler);
           }
+          if (anyViewer.__errorHandler) {
+            viewer.removeEventListener('likec4error', anyViewer.__errorHandler);
+          }
+          viewer.addEventListener('likec4ready', handleReady);
+          viewer.addEventListener('likec4error', handleError);
+          anyViewer.__readyHandler = handleReady;
+          anyViewer.__errorHandler = handleError;
 
-          diagramType = 'likec4';
-          // eslint-disable-next-line svelte/no-dom-manipulating
-          container.innerHTML = data.svg;
-          let graphDiv = container.querySelector<SVGSVGElement>('svg');
-          if (!graphDiv) {
-            throw new Error('graph-div not found');
-          }
-          graphDiv.setAttribute('height', '100%');
-          graphDiv.style.maxWidth = '100%';
-          if (state.rough) {
-            const svg2roughjs = new Svg2Roughjs('#container');
-            svg2roughjs.svg = graphDiv;
-            await svg2roughjs.sketch();
-            graphDiv.remove();
-            const sketch = document.querySelector<SVGSVGElement>('#container > svg');
-            if (!sketch) {
-              throw new Error('sketch not found');
-            }
-            const height = sketch.getAttribute('height');
-            const width = sketch.getAttribute('width');
-            sketch.setAttribute('id', 'graph-div');
-            sketch.setAttribute('height', '100%');
-            sketch.setAttribute('width', '100%');
-            sketch.setAttribute('viewBox', `0 0 ${width} ${height}`);
-            sketch.style.maxWidth = '100%';
-            graphDiv = sketch;
-          }
+          (viewer as unknown as { code: string }).code = state.code;
+          (viewer as unknown as { viewId?: string | null }).viewId = selectedViewId ?? null;
+          // likec4/react expects a named background theme, not an arbitrary hex.
+          // Avoid ReactFlow auto-fit zoom; show at native scale.
+          (viewer as unknown as { fitView: boolean }).fitView = false;
 
-          if (state.panZoom) {
-            handlePanZoom(state, graphDiv);
+          if (!container?.contains(viewer)) {
+            // eslint-disable-next-line svelte/no-dom-manipulating
+            container.replaceChildren(viewer);
           }
+          error = false;
         } else {
           if (mayContainFontAwesome(code)) {
             await waitForFontAwesomeToLoad?.();

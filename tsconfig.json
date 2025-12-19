@@ -2,6 +2,7 @@
   "include": [
     "src/**/*.d.ts",
     "src/**/*.ts",
+    "src/**/*.tsx",
     "src/**/*.svelte",
     "static/**/*.js",
     "static/**/*.json",
@@ -9,6 +10,7 @@
     "tests/**/*.ts"
   ],
   "compilerOptions": {
+    "jsx": "react-jsx",
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "strictNullChecks": true,

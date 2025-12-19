@@ -78,7 +78,9 @@
     "vite": "^7.1.4",
     "vite-plugin-devtools-json": "^1.0.0",
     "vitest": "^3.2.4",
-    "vitest-dom": "^0.1.1"
+    "vitest-dom": "^0.1.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1"
   },
   "dependencies": {
     "@ai-sdk/azure": "^2.0.90",
@@ -108,11 +110,14 @@
     "monaco-editor": "0.52.2",
     "pako": "2.1.0",
     "plausible-tracker": "^0.3.9",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "random-word-slugs": "0.1.7",
     "svg-pan-zoom": "3.6.2",
     "svg2roughjs": "^3.2.1",
     "uuid": "9.0.1",
-    "zod": "^4.0.0"
+    "zod": "^4.0.0",
+    "path-browserify": "^1.0.1"
   },
   "engines": {
     "node": ">=20.19.0"

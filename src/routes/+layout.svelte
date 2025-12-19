@@ -1,4 +1,5 @@
 <script lang="ts">
+  import '$lib/shims/process-global';
   import { Toaster } from '$/components/ui/sonner/index.js';
   import { loadingStateStore } from '$/util/loading';
   import { toggleDarkTheme } from '$/util/state';
