@@ -9,19 +9,9 @@
 
 <script lang="ts">
   import MainMenu from '$/components/MainMenu.svelte';
-  import McWrapper from '$/components/McWrapper.svelte';
-  import { Button } from '$/components/ui/button';
-  import { Separator } from '$/components/ui/separator';
-  import { Switch } from '$/components/ui/switch';
   import { dismissPromotion, getActivePromotion } from '$lib/util/promos/promo';
-  import { env } from '$lib/util/env';
-  import { urlsStore } from '$lib/util/state';
-  import { MCBaseURL } from '$lib/util/util';
-  import type { ComponentProps, Snippet } from 'svelte';
-  import MermaidIcon from '~icons/custom/mermaid';
+  import type { Snippet } from 'svelte';
   import CloseIcon from '~icons/material-symbols/close-rounded';
-  import GithubIcon from '~icons/mdi/github';
-  import DropdownNavMenu from './DropdownNavMenu.svelte';
 
   interface Props {
     mobileToggle?: Snippet;
@@ -29,22 +19,6 @@
   }
 
   let { children, mobileToggle }: Props = $props();
-
-  const isReferral = document.referrer.includes(MCBaseURL);
-
-  type Links = ComponentProps<typeof DropdownNavMenu>['links'];
-
-  const githubLinks: Links = [
-    { title: 'Mermaid JS', href: 'https://github.com/mermaid-js/mermaid' },
-    {
-      title: 'Mermaid Live Editor',
-      href: 'https://github.com/mermaid-js/mermaid-live-editor'
-    },
-    {
-      title: 'Mermaid CLI',
-      href: 'https://github.com/mermaid-js/mermaid-cli'
-    }
-  ];
 
   let activePromotion = $state(getActivePromotion());
 
@@ -87,56 +61,16 @@
 <nav class="z-50 flex p-4 sm:p-6">
   <div class="flex flex-1 items-center gap-2">
     <MainMenu />
-    <MermaidIcon class="size-6" />
     <div
       id="switcher"
-      class="flex items-center justify-center gap-4 font-medium"
-      class:flex-row-reverse={isReferral}>
-      <a href="/" class="whitespace-nowrap text-accent">
-        {#if !isReferral && !mobileToggle}
-          Mermaid
-        {/if}
-        Live Editor
-      </a>
-
-      <McWrapper>
-        {#if env.isEnabledPlaygroundLinks}
-          <div class="hidden items-center justify-center gap-4 md:flex">
-            <Separator orientation="vertical" />
-            <Switch
-              id="editorMode"
-              class="data-[state=checked]:bg-secondary"
-              checked={isReferral}
-              onclick={() => {
-                logEvent('playgroundToggle', { isReferred: isReferral });
-                // Wait for the event to be logged
-                setTimeout(() => {
-                  window.open(
-                    $urlsStore.mermaidChart({ medium: 'toggle' }).playground,
-                    '_self',
-                    // Do not send referrer header, if the user already came from playground
-                    isReferral ? 'noreferrer' : ''
-                  );
-                }, 100);
-              }} />
-
-            <a
-              href={$urlsStore.mermaidChart({ medium: 'toggle' }).playground}
-              class="whitespace-nowrap">
-              Playground <span class="hidden text-sm opacity-50 lg:inline"
-                >- more features, no account required</span>
-            </a>
-          </div>
-        {/if}
-      </McWrapper>
+      class="flex items-center justify-center gap-4 font-medium">
+      <a href="/" class="whitespace-nowrap text-accent">Live Editor</a>
     </div>
   </div>
   <div
     id="menu"
     class="hidden flex-nowrap items-center justify-between gap-3 overflow-hidden md:flex">
-    <DropdownNavMenu icon={GithubIcon} links={githubLinks} />
-    <Separator orientation="vertical" />
-    {@render children()}
+    {@render children?.()}
   </div>
   {@render mobileToggle?.()}
 </nav>
