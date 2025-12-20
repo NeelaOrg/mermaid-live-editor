@@ -26,6 +26,43 @@
     }
   ]);
 
+  const roleLabel = (role: Message['role']) => {
+    if (role === 'assistant') return 'assistant';
+    if (role === 'system') return 'system';
+    return 'you';
+  };
+
+  const roleBubbleClass = (role: Message['role']) => {
+    switch (role) {
+      case 'user':
+        return 'bg-primary text-primary-foreground border-primary/40';
+      case 'assistant':
+        return 'bg-background/70 text-foreground border-border';
+      default:
+        return 'bg-muted/70 text-foreground border-border';
+    }
+  };
+
+  const roleRowClass = (role: Message['role']) =>
+    role === 'user' ? 'justify-end' : 'justify-start';
+
+  const roleAvatarClass = (role: Message['role']) => {
+    switch (role) {
+      case 'user':
+        return 'bg-primary text-primary-foreground';
+      case 'assistant':
+        return 'bg-accent text-accent-foreground';
+      default:
+        return 'bg-muted text-foreground';
+    }
+  };
+
+  const roleInitial = (role: Message['role']) => {
+    if (role === 'assistant') return 'A';
+    if (role === 'system') return 'S';
+    return 'Y';
+  };
+
   const addMessage = (role: Message['role'], text: string, imageDataUrl?: string) => {
     messages = [
       ...messages,
@@ -150,27 +187,68 @@
 
 <Card title="AI Edit" isOpen isStackable icon={{ component: ChatIcon }}>
   <div class="flex flex-col gap-3 p-2">
-    <div class="max-h-52 overflow-auto rounded-md border border-border bg-background/40 p-2 text-sm">
+    <div class="flex max-h-64 flex-col gap-3 overflow-auto rounded-md border border-border bg-background/30 p-3 text-sm">
       {#each messages as m (m.id)}
-        <div class="mb-2">
-          <div class="flex items-center justify-between text-xs opacity-70">
-            <span class="font-medium">{m.role}</span>
-            <span>{dayjs(m.time).format('HH:mm:ss')}</span>
+        <div class={['flex items-start gap-2', roleRowClass(m.role)]}>
+          {#if m.role !== 'user'}
+            <div class={['flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold', roleAvatarClass(m.role)]}>
+              {roleInitial(m.role)}
+            </div>
+          {/if}
+          <div class={['max-w-[80%] rounded-2xl border px-3 py-2', roleBubbleClass(m.role)]}>
+            <div class="flex items-center justify-between text-[11px] opacity-70">
+              <span class="font-medium">{roleLabel(m.role)}</span>
+              <span>{dayjs(m.time).format('HH:mm:ss')}</span>
+            </div>
+            <div class="mt-1 whitespace-pre-wrap">{m.text}</div>
+            {#if m.imageDataUrl}
+              <img
+                class="mt-2 max-h-40 max-w-full rounded-lg border border-border object-contain"
+                alt="Pasted screenshot"
+                src={m.imageDataUrl} />
+            {/if}
           </div>
-          <div class="whitespace-pre-wrap">{m.text}</div>
-          {#if m.imageDataUrl}
-            <img
-              class="mt-2 max-h-40 max-w-full rounded-md border border-border object-contain"
-              alt="Pasted screenshot"
-              src={m.imageDataUrl} />
+          {#if m.role === 'user'}
+            <div class={['flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold', roleAvatarClass(m.role)]}>
+              {roleInitial(m.role)}
+            </div>
           {/if}
         </div>
       {/each}
+      {#if isSending}
+        <div class="flex items-start gap-2 justify-start">
+          <div class="flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold bg-accent text-accent-foreground">
+            A
+          </div>
+          <div class="max-w-[80%] rounded-2xl border px-3 py-2 bg-background/70 text-foreground border-border">
+            <div class="flex items-center gap-1 text-xs opacity-70">
+              <span>assistant</span>
+              <span class="ml-1 inline-flex items-center gap-1">
+                <span class="inline-block size-1.5 animate-bounce rounded-full bg-foreground/70 [animation-delay:0ms]"></span>
+                <span class="inline-block size-1.5 animate-bounce rounded-full bg-foreground/70 [animation-delay:120ms]"></span>
+                <span class="inline-block size-1.5 animate-bounce rounded-full bg-foreground/70 [animation-delay:240ms]"></span>
+              </span>
+            </div>
+          </div>
+        </div>
+      {/if}
     </div>
 
-    <div class="flex gap-2">
+    {#if attachedImageDataUrl}
+      <div class="flex items-center justify-between rounded-md border border-border bg-background/40 px-3 py-2 text-xs">
+        <span>Image attached (will be sent with your next message).</span>
+        <button
+          class="underline underline-offset-2"
+          type="button"
+          onclick={() => (attachedImageDataUrl = null)}>
+          Remove
+        </button>
+      </div>
+    {/if}
+
+    <div class="flex items-end gap-2 rounded-md border border-border bg-background px-2 py-2">
       <textarea
-        class="min-h-10 flex-1 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm"
+        class="min-h-10 flex-1 resize-y bg-transparent px-1 py-1 text-sm outline-none"
         placeholder="e.g. Add a new actor called Admin and connect it to System"
         bind:value={instruction}
         onpaste={(e) => void onPaste(e)}
@@ -190,20 +268,8 @@
         <SendIcon />
       </Button>
     </div>
-    {#if attachedImageDataUrl}
-      <div class="flex items-center justify-between rounded-md border border-border bg-background/40 px-3 py-2 text-xs">
-        <span>Image attached (will be sent with your next message).</span>
-        <button
-          class="underline underline-offset-2"
-          type="button"
-          onclick={() => (attachedImageDataUrl = null)}>
-          Remove
-        </button>
-      </div>
-    {/if}
     <div class="text-xs opacity-70">
-      Ctrl/Cmd+Enter to send. Paste an image into the input to attach it. Uses Azure OpenAI via
-      `/api/ai/mermaid-edit`.
+      Ctrl/Cmd+Enter to send. Paste an image into the input to attach it.
     </div>
   </div>
 </Card>
