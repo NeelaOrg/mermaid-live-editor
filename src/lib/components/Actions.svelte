@@ -20,6 +20,9 @@
 
   type Exporter = (context: CanvasRenderingContext2D, image: HTMLImageElement) => () => void;
 
+  let { embedded = false }: { embedded?: boolean } = $props();
+  let showSizeControls = $state(false);
+
   const getFileName = (extension: string) =>
     `mermaid-diagram-${dayjs().format('YYYY-MM-DD-HHmmss')}.${extension}`;
 
@@ -1440,46 +1443,95 @@ ${svgString}`;
 </script>
 
 {#snippet dualActionButton(text: string, download: (event: Event) => unknown, url?: string)}
-  <div class="flex flex-grow gap-0.5">
+  <div class="flex w-full min-w-0 gap-0.5">
     <Button
-      class={['flex-grow', url && 'rounded-r-none']}
+      class={['w-full min-w-0', url && 'rounded-r-none']}
       onclick={download}
       data-testid="download-{text}">
       <DownloadIcon />
       {text}
     </Button>
-    <ExternalLinkWrapper domain={getDomain(url)} isVisible={!!url}>
-      <Button class="rounded-l-none" href={url} target="_blank" rel="noreferrer noopener">
-        <ExternalLinkIcon />
-      </Button>
-    </ExternalLinkWrapper>
+    {#if url}
+      <ExternalLinkWrapper domain={getDomain(url)} isVisible>
+        <Button class="w-full min-w-0 rounded-l-none" href={url} target="_blank" rel="noreferrer noopener">
+          <ExternalLinkIcon />
+        </Button>
+      </ExternalLinkWrapper>
+    {/if}
   </div>
 {/snippet}
 
-<Card title="Actions" isStackable icon={{ component: DownloadIcon, class: 'rotate-180' }}>
-  <div class="flex min-w-fit flex-col gap-2 p-2">
-    <div class="flex w-full items-center gap-2 py-2 whitespace-nowrap">
-      PNG size
-      <ToggleGroup.Root type="single" variant="outline" bind:value={imageSizeMode}>
-        <ToggleGroup.Item value="auto">Auto</ToggleGroup.Item>
-        <ToggleGroup.Item value="width">Width</ToggleGroup.Item>
-        <ToggleGroup.Item value="height">Height</ToggleGroup.Item>
-      </ToggleGroup.Root>
-      {#if imageSizeMode !== 'auto'}
-        <WidthIcon
-          class={['size-6 shrink-0 transition-all', imageSizeMode === 'width' && 'rotate-90']} />
+{#snippet exportContent()}
+  <div class={['flex flex-col gap-2 p-2', embedded ? 'w-full min-w-0' : 'min-w-fit']}>
+    {#if embedded}
+      <div class="flex items-center gap-2 flex-wrap">
+        <div class="text-xs font-medium">PNG</div>
+        <Button
+          size="sm"
+          variant="ghost"
+          class="h-7 px-2 text-xs shrink-0"
+          onclick={() => (showSizeControls = !showSizeControls)}>
+          Size: {imageSizeMode}
+        </Button>
+      </div>
+      {#if showSizeControls}
+        <div class="flex flex-col gap-2 rounded-md border border-border bg-background/40 p-2">
+          <ToggleGroup.Root type="single" variant="outline" bind:value={imageSizeMode}>
+            <ToggleGroup.Item value="auto">Auto</ToggleGroup.Item>
+            <ToggleGroup.Item value="width">Width</ToggleGroup.Item>
+            <ToggleGroup.Item value="height">Height</ToggleGroup.Item>
+          </ToggleGroup.Root>
+          <div class="flex items-center gap-2">
+            {#if imageSizeMode !== 'auto'}
+              <WidthIcon
+                class={['size-5 shrink-0 transition-all', imageSizeMode === 'width' && 'rotate-90']} />
+            {/if}
+            <Input
+              type="number"
+              min="3"
+              max="10000"
+              disabled={imageSizeMode === 'auto'}
+              bind:value={imageSize} />
+          </div>
+        </div>
       {/if}
-      <Input
-        type="number"
-        min="3"
-        max="10000"
-        disabled={imageSizeMode === 'auto'}
-        bind:value={imageSize} />
-    </div>
-    <div class="flex gap-2">
-      {@render dualActionButton('PNG', onDownloadPNG)}
-      {@render dualActionButton('SVG', onDownloadSVG)}
-    </div>
+    {:else}
+      <div class="flex w-full items-center gap-2 py-2 whitespace-nowrap">
+        PNG size
+        <ToggleGroup.Root type="single" variant="outline" bind:value={imageSizeMode}>
+          <ToggleGroup.Item value="auto">Auto</ToggleGroup.Item>
+          <ToggleGroup.Item value="width">Width</ToggleGroup.Item>
+          <ToggleGroup.Item value="height">Height</ToggleGroup.Item>
+        </ToggleGroup.Root>
+        {#if imageSizeMode !== 'auto'}
+          <WidthIcon
+            class={['size-6 shrink-0 transition-all', imageSizeMode === 'width' && 'rotate-90']} />
+        {/if}
+        <Input
+          type="number"
+          min="3"
+          max="10000"
+          disabled={imageSizeMode === 'auto'}
+          bind:value={imageSize} />
+      </div>
+    {/if}
+    {#if embedded}
+      <div class="grid w-full grid-cols-2 gap-2">
+        <Button class="w-full h-8 px-3 text-xs" size="sm" onclick={onDownloadPNG}>
+          <DownloadIcon />
+          PNG
+        </Button>
+        <Button class="w-full h-8 px-3 text-xs" size="sm" onclick={onDownloadSVG}>
+          <DownloadIcon />
+          SVG
+        </Button>
+      </div>
+    {:else}
+      <div class="flex flex-wrap gap-2">
+        {@render dualActionButton('PNG', onDownloadPNG)}
+        {@render dualActionButton('SVG', onDownloadSVG)}
+      </div>
+    {/if}
     {#if isNetlify}
       <div class="flex w-full items-center justify-center">
         <a class="link text-sm text-gray-500 underline" href="https://netlify.com">
@@ -1488,4 +1540,14 @@ ${svgString}`;
       </div>
     {/if}
   </div>
-</Card>
+{/snippet}
+
+{#if embedded}
+  <div class="w-[360px] max-w-[75vw] overflow-hidden">
+    {@render exportContent()}
+  </div>
+{:else}
+  <Card title="Export" isStackable icon={{ component: DownloadIcon, class: 'rotate-180' }}>
+    {@render exportContent()}
+  </Card>
+{/if}

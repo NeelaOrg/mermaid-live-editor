@@ -14,6 +14,11 @@
     time: number;
   };
 
+  let {
+    fullHeight = false,
+    isOpen = $bindable(true)
+  }: { fullHeight?: boolean; isOpen?: boolean } = $props();
+
   let instruction = $state('');
   let isSending = $state(false);
   let attachedImageDataUrl = $state<string | null>(null);
@@ -185,9 +190,13 @@
   };
 </script>
 
-<Card title="AI Edit" isOpen isStackable icon={{ component: ChatIcon }}>
-  <div class="flex flex-col gap-3 p-2">
-    <div class="flex max-h-64 flex-col gap-3 overflow-auto rounded-md border border-border bg-background/30 p-3 text-sm">
+<Card title="AI Edit" bind:isOpen isStackable icon={{ component: ChatIcon }} {fullHeight}>
+  <div class={['flex flex-col gap-3 p-2', fullHeight && 'h-full']}>
+    <div
+      class={[
+        'flex flex-col gap-3 rounded-md border border-border bg-background/30 p-3 text-sm',
+        fullHeight ? 'flex-1 min-h-0 overflow-auto' : 'max-h-64 overflow-auto'
+      ]}>
       {#each messages as m (m.id)}
         <div class={['flex items-start gap-2', roleRowClass(m.role)]}>
           {#if m.role !== 'user'}

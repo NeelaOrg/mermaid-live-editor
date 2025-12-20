@@ -10,6 +10,7 @@
     isClosable?: boolean;
     isOpen?: boolean;
     isStackable?: boolean;
+    fullHeight?: boolean;
     tabs?: Tab[];
     activeTabID?: string;
     title?: string;
@@ -25,9 +26,10 @@
 
   let {
     isClosable = true,
-    isOpen = false,
+    isOpen = $bindable(false),
     isStackable = false,
     tabs = [],
+    fullHeight = false,
     activeTabID = '',
     title,
     icon,
@@ -48,7 +50,8 @@
 
 <div
   class={[
-    'card flex h-fit flex-col overflow-hidden rounded-2xl border-2 border-muted',
+    'card flex flex-col overflow-hidden rounded-2xl border-2 border-muted',
+    fullHeight && isOpen ? 'h-full' : 'h-fit',
     isOpen && 'isOpen flex-grow',
     isStackable ? 'flex-1 group-has-[.isOpen]:w-full group-has-[.isOpen]:flex-none' : 'w-full'
   ]}>

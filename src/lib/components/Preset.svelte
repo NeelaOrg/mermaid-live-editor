@@ -50,6 +50,8 @@ views {
   };
 
   const samples = { ...getSampleDiagrams(), ...extras } as const;
+
+  let { embedded = false }: { embedded?: boolean } = $props();
   const loadSampleDiagram = (diagramType: string): void => {
     updateCode(samples[diagramType], {
       resetPanZoom: true,
@@ -75,8 +77,8 @@ views {
   ];
 </script>
 
-<Card title="Sample Diagrams" isOpen isStackable icon={{ component: ShapesIcon }}>
-  <div class="flex h-fit max-h-52 flex-wrap gap-2 overflow-y-auto p-2">
+{#snippet sampleList()}
+  <div class="flex h-fit max-h-64 flex-wrap gap-2 overflow-y-auto p-2">
     {#each (($stateStore.language ?? 'mermaid') === 'likec4' ? ['LikeC4'] : diagramOrder) as sample (sample)}
       <Button
         size="sm"
@@ -86,4 +88,12 @@ views {
       </Button>
     {/each}
   </div>
-</Card>
+{/snippet}
+
+{#if embedded}
+  {@render sampleList()}
+{:else}
+  <Card title="Sample Diagrams" isOpen isStackable icon={{ component: ShapesIcon }}>
+    {@render sampleList()}
+  </Card>
+{/if}
