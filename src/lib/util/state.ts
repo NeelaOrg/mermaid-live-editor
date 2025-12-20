@@ -32,6 +32,50 @@ export const defaultState: State = {
   updateDiagram: true
 };
 
+const defaultLikeC4Code = `specification {
+  element system
+  element user
+}
+
+model {
+  customer = user 'Customer'
+  cloud = system 'System'
+}
+
+views {
+  view index {
+    include *
+  }
+}`;
+
+const defaultMermaidCode = defaultState.code;
+
+const isLikelyMermaidCode = (code: string): boolean => {
+  const trimmed = code.trim().toLowerCase();
+  if (!trimmed) return false;
+  return (
+    /^(flowchart|graph|sequencediagram|classdiagram|statediagram|erdiagram|gantt|pie|journey|mindmap|timeline|gitgraph|requirementdiagram|zenuml|sankey-beta|quadrantchart)\b/.test(
+      trimmed
+    ) || trimmed.includes('flowchart ') ||
+    trimmed.includes('sequenceDiagram'.toLowerCase()) ||
+    trimmed.includes('classDiagram'.toLowerCase()) ||
+    trimmed.includes('stateDiagram'.toLowerCase()) ||
+    trimmed.includes('erDiagram'.toLowerCase())
+  );
+};
+
+const isLikelyLikeC4Code = (code: string): boolean => {
+  const trimmed = code.trim().toLowerCase();
+  if (!trimmed) return false;
+  return (
+    trimmed.startsWith('specification') ||
+    trimmed.includes('\nmodel ') ||
+    trimmed.includes('\nmodel{') ||
+    trimmed.includes('\nviews ') ||
+    trimmed.includes('\nviews{')
+  );
+};
+
 const urlParseFailedState = `flowchart TD
     A[Loading URL failed. We can try to figure out why.] -->|Decode JSON| B(Please check the console to see the JSON and error details.)
     B --> C{Is the JSON correct?}
@@ -210,12 +254,32 @@ export const updateCodeStore = (newState: Partial<State>): void => {
 
 export const updateDiagramLanguage = (language: DiagramLanguage): void => {
   errorDebug();
-  updateCodeStore({
-    editorMode: 'code',
-    language,
-    pan: undefined,
-    updateDiagram: true,
-    zoom: undefined
+  inputStateStore.update((state) => {
+    const shouldSetLikeC4Default =
+      language === 'likec4' &&
+      (state.code.trim() === '' ||
+        state.code === defaultState.code ||
+        (!isLikelyLikeC4Code(state.code) &&
+          (state.language !== 'likec4' || isLikelyMermaidCode(state.code))));
+    const shouldSetMermaidDefault =
+      language === 'mermaid' &&
+      (state.code.trim() === '' ||
+        state.code === defaultLikeC4Code ||
+        (!isLikelyMermaidCode(state.code) &&
+          (state.language !== 'mermaid' || isLikelyLikeC4Code(state.code))));
+    return {
+      ...state,
+      editorMode: 'code',
+      language,
+      code: shouldSetLikeC4Default
+        ? defaultLikeC4Code
+        : shouldSetMermaidDefault
+          ? defaultMermaidCode
+          : state.code,
+      pan: undefined,
+      updateDiagram: true,
+      zoom: undefined
+    };
   });
 };
 

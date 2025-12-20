@@ -130,7 +130,7 @@
         direction="horizontal"
         autoSaveId="liveEditor"
         class="gap-4 p-2 pt-0 sm:gap-0 sm:p-6 sm:pt-0">
-        <Resizable.Pane bind:this={editorPane} defaultSize={30} minSize={15}>
+        <Resizable.Pane bind:this={editorPane} defaultSize={25} minSize={15}>
           <div
             class={[
               'grid h-full gap-4 sm:gap-6',
