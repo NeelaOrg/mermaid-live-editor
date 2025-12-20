@@ -25,8 +25,8 @@ const getAzureConfig = (): AzureConfig => {
   const debugLog = (privateEnv.AZURE_OPENAI_DEBUG_LOG ?? 'false') === 'true';
   const reasoningSummaryRaw = privateEnv.AZURE_OPENAI_REASONING_SUMMARY ?? '';
   const reasoningSummary =
-    reasoningSummaryRaw === 'medium' || reasoningSummaryRaw === 'medium'
-      ? (reasoningSummaryRaw as 'medium' | 'medium')
+    reasoningSummaryRaw === 'high' || reasoningSummaryRaw === 'high'
+      ? (reasoningSummaryRaw as 'high' | 'high')
       : 'medium';
 
   if (!endpoint || !apiKey || !deployment) {
@@ -355,8 +355,8 @@ export const mermaidEditWithAzureResponses = async ({
       ],
       tools,
       tool_choice: 'auto',
-      parallel_tool_calls: false,
-      store: false,
+      parallel_tool_calls: true,
+      store: true,
       reasoning: reasoningSummary ? { effort: reasoningSummary } : undefined,
       text: {
         format: {

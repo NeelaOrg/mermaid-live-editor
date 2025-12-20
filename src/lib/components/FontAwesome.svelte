@@ -20,7 +20,7 @@
   export function mayContainFontAwesome(code: string) {
     // taken from https://github.com/mermaid-js/mermaid/blob/7043892e871d0c413ec63dc1570a8ef738d15568/packages/mermaid/src/diagrams/flowchart/flowRenderer-v2.js#L63
     // Not ideal, since we're looking at unparsed code.
-    const regex = /fa[blrs]?:fa-[\w-]+/g;
+    const regex = /(fa[blrs]?:fa-[\w-]+|fa\s+fa-[\w-]+|::icon\(\s*fa\s+fa-[\w-]+\s*\))/gi;
     return regex.test(code);
   }
 </script>

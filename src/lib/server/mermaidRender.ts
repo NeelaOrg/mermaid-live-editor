@@ -1,6 +1,57 @@
 import { JSDOM } from 'jsdom';
 import type { MermaidConfig } from 'mermaid';
 
+let iconPacksRegistered: Promise<void> | null = null;
+
+const ensureIconPacksRegistered = async (mermaid: typeof import('mermaid').default) => {
+  if (iconPacksRegistered) {
+    console.warn('[fa-diag] icon pack registration already initialized (server)');
+    await iconPacksRegistered;
+    const isIconAvailable = (mermaid as unknown as { isIconAvailable?: (name: string) => Promise<boolean> })
+      .isIconAvailable;
+    if (isIconAvailable) {
+      const [faBook, faFaBook] = await Promise.allSettled([
+        isIconAvailable('fa:book'),
+        isIconAvailable('fa:fa-book')
+      ]);
+      console.warn('[fa-diag] recheck fa:book (server)', faBook);
+      console.warn('[fa-diag] recheck fa:fa-book (server)', faFaBook);
+    }
+    return iconPacksRegistered;
+  }
+
+  iconPacksRegistered = (async () => {
+    try {
+      console.warn('[fa-diag] registering fa icon pack (server)');
+      mermaid.registerIconPacks([
+        {
+          name: 'fa',
+          loader: async () => {
+    const mod = await import('@iconify-json/fa/icons.json');
+            return 'default' in mod ? mod.default : mod;
+          }
+        }
+      ]);
+      const isIconAvailable = (mermaid as unknown as { isIconAvailable?: (name: string) => Promise<boolean> })
+        .isIconAvailable;
+      if (isIconAvailable) {
+        const [faBook, faFaBook] = await Promise.allSettled([
+          isIconAvailable('fa:book'),
+          isIconAvailable('fa:fa-book')
+        ]);
+        console.warn('[fa-diag] isIconAvailable fa:book', faBook);
+        console.warn('[fa-diag] isIconAvailable fa:fa-book', faFaBook);
+      } else {
+        console.warn('[fa-diag] isIconAvailable not available on mermaid (server)');
+      }
+    } catch (error) {
+      console.warn('[fa-diag] failed to register fa icon pack (server)', error);
+    }
+  })();
+
+  return iconPacksRegistered;
+};
+
 const coerceConfig = (mermaidConfig?: unknown): MermaidConfig => {
   if (!mermaidConfig) {
     return {};
@@ -41,6 +92,7 @@ export const renderSvgLocally = async (code: string, mermaidConfig?: unknown): P
 
     const mermaid = (await import('mermaid')).default;
 
+    await ensureIconPacksRegistered(mermaid);
     mermaid.initialize(config);
     const id = `mcp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const result = await mermaid.render(id, code);
@@ -75,6 +127,7 @@ export const parseMermaidLocally = async (code: string, mermaidConfig?: unknown)
     (globalThis as unknown as { DOMParser: unknown }).DOMParser = dom.window.DOMParser;
 
     const mermaid = (await import('mermaid')).default;
+    await ensureIconPacksRegistered(mermaid);
     mermaid.initialize(config);
     await mermaid.parse(code);
   } finally {

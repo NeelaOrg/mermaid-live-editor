@@ -6,6 +6,7 @@
   import { inputStateStore, stateStore, updateCodeStore } from '$/util/state';
   import { logEvent, saveStatistics } from '$/util/stats';
   import FontAwesome, { mayContainFontAwesome } from '$lib/components/FontAwesome.svelte';
+  import FontAwesomeCSS from '$lib/components/FontAwesomeCSS.svelte';
   import '$lib/likec4-viewer';
   import uniqueID from 'lodash-es/uniqueId';
   import type { MermaidConfig } from 'mermaid';
@@ -149,8 +150,20 @@
           }
           error = false;
         } else {
-          if (mayContainFontAwesome(code)) {
-            await waitForFontAwesomeToLoad?.();
+          const faCandidate = mayContainFontAwesome(code);
+          console.warn('[fa-diag] render mermaid', {
+            language: currentLanguage ?? 'mermaid',
+            faCandidate,
+            hasWaiter: Boolean(waitForFontAwesomeToLoad)
+          });
+          if (faCandidate) {
+            if (waitForFontAwesomeToLoad) {
+              await waitForFontAwesomeToLoad();
+            } else {
+              // Fallback to ensure FA CSS + fonts are ready before render.
+              void FontAwesomeCSS;
+              await Promise.allSettled(Array.from(document.fonts, (font) => font.load()));
+            }
           }
 
           const viewID = uniqueID('graph-');
