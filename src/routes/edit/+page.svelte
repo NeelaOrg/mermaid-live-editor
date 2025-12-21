@@ -2,7 +2,7 @@
   import Actions from '$/components/Actions.svelte';
   import AiEdit from '$/components/AiEdit.svelte';
   import Card from '$/components/Card/Card.svelte';
-  import Editor from '$/components/Editor.svelte';
+  import WorkspaceEditor from '$/components/WorkspaceEditor.svelte';
   import Navbar from '$/components/Navbar.svelte';
   import PanZoomToolbar from '$/components/PanZoomToolbar.svelte';
   import Preset from '$/components/Preset.svelte';
@@ -162,7 +162,7 @@
               {#if activeEditorTab === 'samples'}
                 <Preset embedded />
               {:else}
-                <Editor {isMobile} />
+                <WorkspaceEditor {isMobile} />
               {/if}
             </Card>
 

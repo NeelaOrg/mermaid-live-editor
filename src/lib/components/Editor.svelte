@@ -6,13 +6,17 @@
   import { debounce } from 'lodash-es';
   import ExclamationCircleIcon from '~icons/material-symbols/error-outline-rounded';
 
-  const { isMobile } = $props<{ isMobile: boolean }>();
+  const { isMobile, onExternalUpdate } = $props<{
+    isMobile: boolean;
+    onExternalUpdate?: (text: string) => void;
+  }>();
   const onUpdate = (text: string) => {
     if ($stateStore.editorMode === 'code') {
       updateCode(text);
     } else {
       updateConfig(text);
     }
+    onExternalUpdate?.(text);
   };
 
   let showError = $state(false);

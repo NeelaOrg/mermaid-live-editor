@@ -9,6 +9,61 @@ mermaid.registerLayoutLoaders([...elkLayouts, ...tidyTreeLayouts]);
 const init = mermaid.registerExternalDiagrams([zenuml]);
 let iconPacksRegistered: Promise<void> | null = null;
 
+const iconToFontAwesomeHtml = (raw: string): string => {
+  const icon = raw.trim();
+  if (!icon) return '';
+  if (icon.startsWith('fa:')) {
+    return `<i class="fa fa-${icon.slice(3)}"></i>`;
+  }
+  const faMatch = icon.match(/fa-([\w-]+)/i);
+  if (faMatch) {
+    return `<i class="fa fa-${faMatch[1]}"></i>`;
+  }
+  return '';
+};
+
+const preprocessMindmapIcons = (code: string): string => {
+  if (!/^\s*mindmap\b/i.test(code) || !code.includes('::icon(')) {
+    return code;
+  }
+
+  const lines = code.split('\n');
+  let lastNodeIndex = -1;
+  const iconLineRegex = /^\s*::icon\(([^)]+)\)\s*$/i;
+  const inlineIconRegex = /::icon\(([^)]+)\)/gi;
+
+  const isNodeLine = (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return false;
+    if (trimmed.startsWith('%%')) return false;
+    if (/^mindmap\b/i.test(trimmed)) return false;
+    if (trimmed.startsWith('::')) return false;
+    return true;
+  };
+
+  lines.forEach((line, index) => {
+    const iconLineMatch = line.match(iconLineRegex);
+    if (iconLineMatch) {
+      const html = iconToFontAwesomeHtml(iconLineMatch[1] ?? '');
+      if (html && lastNodeIndex >= 0) {
+        lines[lastNodeIndex] = `${lines[lastNodeIndex]} ${html}`;
+      }
+      lines[index] = '';
+      return;
+    }
+
+    if (isNodeLine(line)) {
+      lines[index] = line.replace(inlineIconRegex, (_match, icon) => {
+        const html = iconToFontAwesomeHtml(icon ?? '');
+        return html ? ` ${html}` : '';
+      });
+      lastNodeIndex = index;
+    }
+  });
+
+  return lines.filter((line) => line !== '').join('\n');
+};
+
 const ensureIconPacksRegistered = async () => {
   if (iconPacksRegistered) {
     console.warn('[fa-diag] icon pack registration already initialized (client)');
@@ -78,7 +133,8 @@ export const render = async (
 
   // Should be able to call this multiple times without any issues.
   mermaid.initialize(config);
-  const result = await mermaid.render(id, code);
+  const preparedCode = preprocessMindmapIcons(code);
+  const result = await mermaid.render(id, preparedCode);
   const svg = result.svg ?? '';
   console.warn('[fa-diag] mermaid.render svg scan', {
     hasFaClass: svg.includes('fa-'),

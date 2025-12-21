@@ -36,10 +36,12 @@
           'px-2',
           activeTabID === tab.id && 'rounded-b-none border-b-2 border-b-primary-foreground/50'
         ]}
+        title={tab.title}
+        aria-label={tab.title}
         onclick={toggleTabs(tab)}
         onkeypress={toggleTabs(tab)}>
         <tab.icon />
-        {tab.title}
+        <span class="sr-only">{tab.title}</span>
       </Button>
 
       {#if index < tabs.length - 1}
